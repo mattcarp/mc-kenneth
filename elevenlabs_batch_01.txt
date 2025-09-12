@@ -1,0 +1,56 @@
+# ElevenLabs Processing Batch 1
+# Generated: 2025-09-12 11:27:24.781964
+# Files: 50
+# Avg Score: 0.642
+# Est Cost: $0.81
+
+SIM_CH22A_(Coast_Guard)_20250912_035142.wav
+SIM_CH22A_(Coast_Guard)_20250911_224411_continued_09.wav
+SIM_CH22A_(Coast_Guard)_20250912_062118_continued_09.wav
+SIM_CH68_(Marina)_20250912_045106_continued_03.wav
+SIM_CH12_(Port_Ops)_20250912_080240_continued_08.wav
+SIM_Approach_Control_20250911_224840_continued_01.wav
+SIM_Approach_Control_20250912_061715_continued_03.wav
+SIM_CH22A_(Coast_Guard)_20250912_091818_continued_10.wav
+SIM_CH13_(Bridge-to-Bridge)_20250911_231840.wav
+SIM_Air-to-Air_20250912_033459_continued_04.wav
+SIM_Flight_Following_20250912_075527_continued_01.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_033940_continued_04.wav
+SIM_CH13_(Bridge-to-Bridge)_20250911_231657.wav
+SIM_CH13_(Bridge-to-Bridge)_20250911_224305_continued_02.wav
+SIM_CH22A_(Coast_Guard)_20250912_060301_continued_07.wav
+SIM_CH22A_(Coast_Guard)_20250912_091802_continued_02.wav
+SIM_Tower_Control_20250912_050141_continued_09.wav
+SIM_CH22A_(Coast_Guard)_20250912_090426.wav
+SIM_CH22A_(Coast_Guard)_20250912_032408_continued_05.wav
+SIM_CTAF_20250912_090330_continued_10.wav
+SIM_Tower_Control_20250912_055753_continued_01.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_082148_continued_10.wav
+SIM_Approach_Control_20250912_062458_continued_04.wav
+SIM_Approach_Control_20250912_070803_continued_03.wav
+SIM_CH12_(Port_Ops)_20250911_220650_continued_01.wav
+SIM_CH22A_(Coast_Guard)_20250911_215334_continued_01.wav
+SIM_Approach_Control_20250911_233240_continued_04.wav
+SIM_Flight_Following_20250912_084551_continued_04.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_065811_continued_08.wav
+SIM_CH09_(Calling)_20250911_212853_continued_01.wav
+SIM_Tower_Control_20250912_090523_continued_03.wav
+SIM_Tower_Control_20250911_232936_continued_04.wav
+SIM_CH68_(Marina)_20250911_215257_continued_08.wav
+SIM_CH77_(Commercial)_20250912_021920_continued_08.wav
+SIM_CH68_(Marina)_20250911_225628_continued_08.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_052142.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_062850_continued_03.wav
+SIM_Approach_Control_20250912_041600_continued_09.wav
+SIM_CH22A_(Coast_Guard)_20250912_085831_continued_01.wav
+SIM_Approach_Control_20250912_054233_continued_03.wav
+SIM_CH22A_(Coast_Guard)_20250911_222212_continued_03.wav
+SIM_Approach_Control_20250912_040601_continued_03.wav
+SIM_Air-to-Air_20250912_082523.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_024130_continued_10.wav
+SIM_CH13_(Bridge-to-Bridge)_20250912_073537_continued_08.wav
+SIM_CH71_(Ship_Movement)_20250912_013052_continued_01.wav
+SIM_Tower_Control_20250912_044743_continued_06.wav
+SIM_CH71_(Ship_Movement)_20250912_081055_continued_08.wav
+SIM_CH77_(Commercial)_20250912_052456_continued_05.wav
+SIM_Approach_Control_20250912_041848_continued_04.wav

@@ -1,0 +1,43 @@
+GQRX CONFIGURATION STEPS FOR SDRPLAY
+=====================================
+
+Since you can hear Mac audio but GQRX isn't receiving:
+
+1. In GQRX, click the "DSP" button (top toolbar, looks like a wrench/gear icon)
+
+2. In "Configure I/O devices" dialog:
+
+   OPTION A - Try RTL-SDR mode:
+   --------------------------------
+   Device: RTL-SDR RTL2832U
+   Device string: rtl=0
+   Input rate: 2048000
+   Decimation: None
+   
+   Click OK
+
+   OPTION B - Try File Source (test mode):
+   --------------------------------
+   Device: Complex Sampled (I/Q) File
+   File: /dev/urandom    (this generates noise to test)
+   Sample rate: 2048000
+   
+   Click OK
+
+3. After clicking OK:
+   - You should start seeing noise in the waterfall
+   - Set frequency to 89.700.000 (89.7 MHz)
+   - Set Mode to "WFM" (Wide FM)
+   - Turn SQL slider all the way LEFT
+   - You should hear static/noise
+
+4. If you see signals in waterfall but no audio:
+   - Tools menu → Audio → Audio Output
+   - Select "Mac mini Speakers"
+
+IF NEITHER OPTION WORKS:
+The SDRplay needs special drivers that aren't installed.
+We'll need to either:
+1. Build the drivers from source
+2. Use an RTL-SDR dongle instead ($25-30)
+3. Use online WebSDR while we fix this
