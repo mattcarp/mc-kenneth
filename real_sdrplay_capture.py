@@ -142,7 +142,7 @@ sdr.closeStream(rxStream)
                         # Clean up raw file
                         os.unlink(raw_file)
                         
-                        return wav_file
+                        print(f"✅ Audio capture completed: {wav_file}")
                     else:
                         print(f"❌ No samples captured")
                         
@@ -186,8 +186,6 @@ sdr.closeStream(rxStream)
     
     print(f"✅ Test signal saved: {wav_file}")
     print(f"📝 NOTE: This is test data - working on real RF capture")
-    
-    return wav_file
 
 except Exception as e:
     print(f"❌ Error loading SDRplay API: {e}")
