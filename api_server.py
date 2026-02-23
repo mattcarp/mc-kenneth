@@ -11,6 +11,7 @@ from fastapi import (
     HTTPException,
     BackgroundTasks,
     WebSocket,
+    WebSocketDisconnect,
     Query,
     File,
     UploadFile,
@@ -24,6 +25,10 @@ import numpy as np
 from datetime import datetime
 import subprocess
 import os
+import json
+import uuid
+import urllib.request
+import urllib.error
 from api_maritime_aviation import add_maritime_aviation_routes
 
 # Initialize FastAPI with rich metadata
@@ -226,6 +231,148 @@ class ThreatAssessment(BaseModel):
     recommendations: List[str]
     evidence: Dict[str, Any]
     timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class AlertSeverity(str, Enum):
+    """Alert severity levels"""
+
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlertCreate(BaseModel):
+    """Inbound alert creation request"""
+
+    title: str = Field(..., description="Alert title for Mission Control display")
+    description: Optional[str] = Field(
+        default=None, description="Detailed alert context"
+    )
+    signal_type: Optional[SignalType] = SignalType.UNKNOWN
+    severity: Optional[AlertSeverity] = None
+    frequency_hz: Optional[float] = Field(
+        default=None, description="Frequency in Hz"
+    )
+    frequency_mhz: Optional[float] = Field(
+        default=None, description="Frequency in MHz"
+    )
+    confidence: float = Field(default=0.5, ge=0, le=1)
+    transcript: Optional[str] = None
+    audio_url: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    source: str = Field(default="kenneth-sdr")
+
+    @validator("title")
+    def title_required(cls, v):
+        if not v.strip():
+            raise ValueError("title must not be empty")
+        return v
+
+
+class AlertRecord(BaseModel):
+    """Persisted alert record"""
+
+    id: str
+    created_at: datetime
+    title: str
+    description: Optional[str]
+    signal_type: SignalType
+    severity: AlertSeverity
+    frequency_mhz: Optional[float]
+    confidence: float
+    transcript: Optional[str]
+    audio_url: Optional[str]
+    tags: List[str]
+    metadata: Dict[str, Any]
+    source: str
+
+
+ALERTS: List[AlertRecord] = []
+ALERT_CLIENTS: List[WebSocket] = []
+MAX_ALERTS = 500
+DISTRESS_KEYWORDS = {
+    "mayday",
+    "pan-pan",
+    "pan pan",
+    "sos",
+    "distress",
+    "man overboard",
+    "help",
+    "emergency",
+}
+
+
+def _is_distress_alert(payload: AlertCreate) -> bool:
+    if payload.signal_type == SignalType.DISTRESS:
+        return True
+    text = " ".join(
+        filter(None, [payload.title, payload.description, payload.transcript])
+    ).lower()
+    return any(keyword in text for keyword in DISTRESS_KEYWORDS)
+
+
+def _normalize_frequency_mhz(payload: AlertCreate) -> Optional[float]:
+    if payload.frequency_mhz is not None:
+        return payload.frequency_mhz
+    if payload.frequency_hz is not None:
+        return payload.frequency_hz / 1e6
+    return None
+
+
+def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeout: int) -> None:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        response.read()
+
+
+def _dispatch_alert_to_mission_control(alert: AlertRecord) -> None:
+    conversation_url = os.getenv("MC_CONVERSATION_WEBHOOK_URL")
+    kanban_url = os.getenv("MC_KANBAN_WEBHOOK_URL")
+    token = os.getenv("MC_WEBHOOK_BEARER_TOKEN")
+    timeout = int(os.getenv("MC_WEBHOOK_TIMEOUT", "3"))
+
+    if not conversation_url and not kanban_url:
+        return
+
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    base_payload = {
+        "source": "kenneth-sdr",
+        "alert": alert.dict(),
+    }
+
+    if conversation_url:
+        payload = {**base_payload, "channel": "conversation"}
+        try:
+            _post_json(conversation_url, payload, headers, timeout)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+            pass
+
+    if kanban_url:
+        payload = {**base_payload, "channel": "kanban"}
+        try:
+            _post_json(kanban_url, payload, headers, timeout)
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError):
+            pass
+
+
+async def _broadcast_alert(alert: AlertRecord) -> None:
+    if not ALERT_CLIENTS:
+        return
+    dead_clients: List[WebSocket] = []
+    payload = {"type": "alert", "alert": alert.dict()}
+    for client in ALERT_CLIENTS:
+        try:
+            await client.send_json(payload)
+        except Exception:
+            dead_clients.append(client)
+    for client in dead_clients:
+        if client in ALERT_CLIENTS:
+            ALERT_CLIENTS.remove(client)
 
 
 # ==================== SIGNAL CAPTURE ====================
@@ -583,6 +730,86 @@ async def active_threats():
         "monitoring_status": "active",
         "last_scan": datetime.now(),
     }
+
+
+# ==================== ALERTS ====================
+
+
+@app.post("/alerts", tags=["alerts"], response_model=AlertRecord)
+async def create_alert(
+    payload: AlertCreate, background_tasks: BackgroundTasks
+):
+    """
+    Create an alert and forward it to Mission Control.
+
+    Distress signals are always promoted to critical severity.
+    """
+    is_distress = _is_distress_alert(payload)
+    severity = payload.severity or AlertSeverity.WARNING
+    if is_distress:
+        severity = AlertSeverity.CRITICAL
+
+    record = AlertRecord(
+        id=str(uuid.uuid4()),
+        created_at=datetime.now(),
+        title=payload.title.strip(),
+        description=payload.description,
+        signal_type=payload.signal_type or SignalType.UNKNOWN,
+        severity=severity,
+        frequency_mhz=_normalize_frequency_mhz(payload),
+        confidence=payload.confidence,
+        transcript=payload.transcript,
+        audio_url=payload.audio_url,
+        tags=payload.tags,
+        metadata=payload.metadata,
+        source=payload.source,
+    )
+
+    ALERTS.append(record)
+    if len(ALERTS) > MAX_ALERTS:
+        ALERTS.pop(0)
+
+    background_tasks.add_task(_dispatch_alert_to_mission_control, record)
+    await _broadcast_alert(record)
+
+    return record
+
+
+@app.get("/alerts", tags=["alerts"], response_model=List[AlertRecord])
+async def list_alerts(limit: int = Query(100, ge=1, le=500)):
+    """List recent alerts."""
+    return list(reversed(ALERTS[-limit:]))
+
+
+@app.get("/alerts/{alert_id}", tags=["alerts"], response_model=AlertRecord)
+async def get_alert(alert_id: str):
+    """Get a single alert by id."""
+    for alert in ALERTS:
+        if alert.id == alert_id:
+            return alert
+    raise HTTPException(status_code=404, detail="Alert not found")
+
+
+@app.websocket("/realtime/alerts")
+async def alerts_stream(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time alert streaming.
+
+    Pushes alerts to Mission Control panels.
+    """
+    await websocket.accept()
+    ALERT_CLIENTS.append(websocket)
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        if websocket in ALERT_CLIENTS:
+            ALERT_CLIENTS.remove(websocket)
+    except Exception:
+        if websocket in ALERT_CLIENTS:
+            ALERT_CLIENTS.remove(websocket)
+        await websocket.close()
 
 
 # ==================== MACHINE LEARNING ====================
