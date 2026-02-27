@@ -15,10 +15,11 @@ from fastapi import (
     Query,
     File,
     UploadFile,
+    Form,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from enum import Enum
 import asyncio
 import numpy as np
@@ -27,6 +28,8 @@ import subprocess
 import os
 import json
 import uuid
+import io
+import wave
 import urllib.request
 import urllib.error
 from api_maritime_aviation import add_maritime_aviation_routes
@@ -303,6 +306,47 @@ DISTRESS_KEYWORDS = {
 }
 
 
+class SpeakerCaptureRequest(BaseModel):
+    """Speaker identification request metadata."""
+
+    capture_id: Optional[str] = Field(default=None, description="External capture id")
+    frequency_hz: Optional[float] = Field(default=None, ge=1e6, le=6e9)
+    transcript: Optional[str] = Field(default=None, description="Optional ASR transcript")
+    source: str = Field(default="kenneth-sdr")
+
+
+class SpeakerProfile(BaseModel):
+    """Persisted voice speaker profile."""
+
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    first_capture_id: Optional[str]
+    last_capture_id: Optional[str]
+    captures_count: int
+    average_similarity: float = Field(..., ge=0, le=1)
+    gender_estimate: str
+    age_estimate: int = Field(..., ge=0, le=120)
+    age_range: str
+    confidence: float = Field(..., ge=0, le=1)
+    embedding: List[float]
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SpeakerIdentificationResult(BaseModel):
+    """Speaker identification response."""
+
+    speaker_id: str
+    matched_existing_profile: bool
+    similarity: float = Field(..., ge=0, le=1)
+    profile: SpeakerProfile
+
+
+SPEAKER_DB_PATH = os.getenv("SPEAKER_DB_PATH", "/tmp/speaker_profiles_db.json")
+SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.97"))
+SPEAKER_PROFILES: Dict[str, SpeakerProfile] = {}
+
+
 def _is_distress_alert(payload: AlertCreate) -> bool:
     if payload.signal_type == SignalType.DISTRESS:
         return True
@@ -310,6 +354,197 @@ def _is_distress_alert(payload: AlertCreate) -> bool:
         filter(None, [payload.title, payload.description, payload.transcript])
     ).lower()
     return any(keyword in text for keyword in DISTRESS_KEYWORDS)
+
+
+def _estimate_gender_and_age(
+    pitch_hz: float, spectral_centroid_hz: float, confidence: float
+) -> Dict[str, Any]:
+    """
+    Lightweight heuristic estimation from voice proxies.
+    The values are coarse, for triage/labeling only.
+    """
+    if confidence < 0.2:
+        return {"gender_estimate": "unknown", "age_estimate": 0, "age_range": "unknown"}
+
+    if pitch_hz >= 165:
+        gender = "female"
+    elif pitch_hz > 0:
+        gender = "male"
+    else:
+        gender = "unknown"
+
+    # Age estimate from centroid and pitch trend; bounded to practical ranges.
+    base_age = 34.0
+    age_adjustment = ((180.0 - min(pitch_hz, 260.0)) / 12.0) + (
+        (2600.0 - min(spectral_centroid_hz, 4500.0)) / 350.0
+    )
+    age_estimate = int(round(max(14.0, min(80.0, base_age + age_adjustment))))
+
+    if age_estimate < 20:
+        age_range = "teen"
+    elif age_estimate < 35:
+        age_range = "young_adult"
+    elif age_estimate < 55:
+        age_range = "adult"
+    else:
+        age_range = "senior"
+
+    return {
+        "gender_estimate": gender,
+        "age_estimate": age_estimate,
+        "age_range": age_range,
+    }
+
+
+def _decode_audio_samples(audio_bytes: bytes, filename: str) -> Tuple[np.ndarray, int]:
+    """
+    Decode WAV audio if possible; otherwise treat bytes as normalized int8-like data.
+    """
+    if filename.lower().endswith(".wav"):
+        try:
+            with wave.open(io.BytesIO(audio_bytes), "rb") as wav:
+                channels = wav.getnchannels()
+                sample_rate = wav.getframerate()
+                sample_width = wav.getsampwidth()
+                frames = wav.readframes(wav.getnframes())
+                if sample_width == 1:
+                    samples = np.frombuffer(frames, dtype=np.uint8).astype(np.float32)
+                    samples = (samples - 128.0) / 128.0
+                elif sample_width == 2:
+                    samples = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                    samples = samples / 32768.0
+                else:
+                    samples = np.frombuffer(frames, dtype=np.int8).astype(np.float32) / 128.0
+
+                if channels > 1:
+                    samples = samples.reshape(-1, channels).mean(axis=1)
+                return samples, sample_rate
+        except wave.Error:
+            pass
+
+    samples = np.frombuffer(audio_bytes, dtype=np.int8).astype(np.float32) / 128.0
+    return samples, 8000
+
+
+def _safe_cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    if denom <= 0:
+        return 0.0
+    score = float(np.dot(a, b) / denom)
+    return max(0.0, min(1.0, (score + 1.0) / 2.0))
+
+
+def _extract_speaker_features(audio_bytes: bytes, filename: str) -> Dict[str, Any]:
+    """
+    Build deterministic voice features for profile matching.
+    """
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio payload")
+
+    samples, sample_rate = _decode_audio_samples(audio_bytes, filename)
+    if samples.size < 32:
+        raise HTTPException(status_code=400, detail="Audio payload too small")
+
+    samples = samples[: min(samples.size, 160000)]
+    abs_samples = np.abs(samples)
+    power = float(np.mean(abs_samples))
+    std = float(np.std(samples))
+    zcr = float(np.mean(np.abs(np.diff(np.signbit(samples)).astype(np.float32))))
+    peak = float(np.max(abs_samples))
+
+    fft_window = samples[: min(4096, samples.size)]
+    fft_mag = np.abs(np.fft.rfft(fft_window))
+    fft_mag_sum = float(np.sum(fft_mag) + 1e-8)
+    freqs = np.fft.rfftfreq(fft_window.size, d=1.0 / sample_rate)
+    centroid_hz = float(np.sum(freqs * fft_mag) / fft_mag_sum)
+
+    # Autocorrelation F0 estimate with sane speech bounds.
+    ac_window = samples[: min(8192, samples.size)]
+    centered = ac_window - np.mean(ac_window)
+    if np.max(np.abs(centered)) > 1e-6:
+        autocorr = np.correlate(centered, centered, mode="full")[centered.size - 1 :]
+        min_lag = max(1, int(sample_rate / 300))
+        max_lag = min(autocorr.size - 1, int(sample_rate / 70))
+        if max_lag > min_lag:
+            lag = int(np.argmax(autocorr[min_lag:max_lag]) + min_lag)
+            pitch_proxy_hz = float(sample_rate / lag)
+        else:
+            pitch_proxy_hz = float(70.0 + min(190.0, 250.0 * zcr))
+    else:
+        pitch_proxy_hz = float(70.0 + min(190.0, 250.0 * zcr))
+
+    # 16D deterministic embedding from distribution and spectral bins.
+    quantiles = np.percentile(abs_samples, [10, 25, 50, 75, 90]).astype(np.float32)
+    band_slices = np.array_split(fft_mag.astype(np.float32), 8)
+    band_energies = np.array(
+        [float(np.mean(band)) if band.size else 0.0 for band in band_slices],
+        dtype=np.float32,
+    )
+    embedding = np.concatenate(
+        [
+            np.array(
+                [
+                    power,
+                    std,
+                    zcr,
+                    peak,
+                    pitch_proxy_hz / 300.0,
+                    centroid_hz / 6000.0,
+                ],
+                dtype=np.float32,
+            ),
+            quantiles,
+            band_energies[:7],
+        ]
+    )
+    embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
+
+    quality_confidence = float(max(0.0, min(1.0, (power * 2.4) + (0.2 - std))))
+
+    demographics = _estimate_gender_and_age(
+        pitch_hz=pitch_proxy_hz,
+        spectral_centroid_hz=centroid_hz,
+        confidence=quality_confidence,
+    )
+
+    return {
+        "embedding": embedding,
+        "confidence": quality_confidence,
+        "pitch_proxy_hz": pitch_proxy_hz,
+        "spectral_centroid_hz": centroid_hz,
+        **demographics,
+    }
+
+
+def _persist_speaker_profiles() -> None:
+    payload = [profile.model_dump() for profile in SPEAKER_PROFILES.values()]
+    with open(SPEAKER_DB_PATH, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, default=str)
+
+
+def _load_speaker_profiles() -> None:
+    if not os.path.exists(SPEAKER_DB_PATH):
+        return
+    try:
+        with open(SPEAKER_DB_PATH, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        for item in raw:
+            profile = SpeakerProfile(**item)
+            SPEAKER_PROFILES[profile.id] = profile
+    except (json.JSONDecodeError, OSError, ValueError):
+        SPEAKER_PROFILES.clear()
+
+
+def _find_best_speaker_match(embedding: np.ndarray) -> Dict[str, Any]:
+    best_id = None
+    best_score = 0.0
+    for speaker_id, profile in SPEAKER_PROFILES.items():
+        current = np.array(profile.embedding, dtype=np.float32)
+        score = _safe_cosine_similarity(embedding, current)
+        if score > best_score:
+            best_score = score
+            best_id = speaker_id
+    return {"speaker_id": best_id, "similarity": best_score}
 
 
 def _normalize_frequency_mhz(payload: AlertCreate) -> Optional[float]:
@@ -373,6 +608,9 @@ async def _broadcast_alert(alert: AlertRecord) -> None:
     for client in dead_clients:
         if client in ALERT_CLIENTS:
             ALERT_CLIENTS.remove(client)
+
+
+_load_speaker_profiles()
 
 
 # ==================== SIGNAL CAPTURE ====================
@@ -788,6 +1026,158 @@ async def get_alert(alert_id: str):
         if alert.id == alert_id:
             return alert
     raise HTTPException(status_code=404, detail="Alert not found")
+
+
+@app.post(
+    "/voice/speakers/identify",
+    tags=["ml"],
+    response_model=SpeakerIdentificationResult,
+)
+async def identify_speaker(
+    background_tasks: BackgroundTasks,
+    audio_file: UploadFile = File(...),
+    capture_id: Optional[str] = Form(default=None),
+    frequency_hz: Optional[float] = Form(default=None),
+    transcript: Optional[str] = Form(default=None),
+    source: str = Form(default="kenneth-sdr"),
+):
+    """
+    Identify and track speakers across captures using lightweight voice fingerprints.
+    """
+    if not audio_file.filename:
+        raise HTTPException(status_code=400, detail="Audio file name is required")
+
+    audio_bytes = await audio_file.read()
+    features = _extract_speaker_features(audio_bytes, audio_file.filename)
+    embedding = features["embedding"]
+
+    match = _find_best_speaker_match(embedding)
+    matched_existing = False
+    if match["speaker_id"] and match["similarity"] >= SPEAKER_MATCH_THRESHOLD:
+        candidate = SPEAKER_PROFILES[match["speaker_id"]]
+        profile_pitch = float(
+            candidate.metadata.get(
+                "pitch_proxy_hz_avg",
+                candidate.metadata.get("last_pitch_proxy_hz", 0.0),
+            )
+        )
+        profile_centroid = float(
+            candidate.metadata.get(
+                "spectral_centroid_hz_avg",
+                candidate.metadata.get("last_spectral_centroid_hz", 0.0),
+            )
+        )
+        pitch_delta = abs(profile_pitch - features["pitch_proxy_hz"])
+        centroid_delta = abs(profile_centroid - features["spectral_centroid_hz"])
+        matched_existing = pitch_delta <= 22.0 and centroid_delta <= 650.0
+
+    now = datetime.now()
+    if matched_existing:
+        profile = SPEAKER_PROFILES[match["speaker_id"]]
+        existing = np.array(profile.embedding, dtype=np.float32)
+        updated_embedding = ((existing * profile.captures_count) + embedding) / (
+            profile.captures_count + 1
+        )
+        updated_embedding = updated_embedding / (np.linalg.norm(updated_embedding) + 1e-8)
+
+        prior_total = profile.average_similarity * profile.captures_count
+        profile.average_similarity = (prior_total + match["similarity"]) / (
+            profile.captures_count + 1
+        )
+        profile.embedding = updated_embedding.tolist()
+        profile.updated_at = now
+        profile.last_capture_id = capture_id
+        profile.captures_count += 1
+        profile.confidence = max(profile.confidence, features["confidence"])
+        if features["gender_estimate"] != "unknown":
+            profile.gender_estimate = features["gender_estimate"]
+        if features["age_estimate"] > 0:
+            profile.age_estimate = features["age_estimate"]
+            profile.age_range = features["age_range"]
+        profile.metadata.update(
+            {
+                "last_frequency_hz": frequency_hz,
+                "last_transcript": transcript,
+                "source": source,
+                "last_pitch_proxy_hz": features["pitch_proxy_hz"],
+                "last_spectral_centroid_hz": features["spectral_centroid_hz"],
+                "pitch_proxy_hz_avg": (
+                    (
+                        profile.metadata.get(
+                            "pitch_proxy_hz_avg",
+                            profile.metadata.get("last_pitch_proxy_hz", 0.0),
+                        )
+                        * (profile.captures_count - 1)
+                    )
+                    + features["pitch_proxy_hz"]
+                )
+                / profile.captures_count,
+                "spectral_centroid_hz_avg": (
+                    (
+                        profile.metadata.get(
+                            "spectral_centroid_hz_avg",
+                            profile.metadata.get("last_spectral_centroid_hz", 0.0),
+                        )
+                        * (profile.captures_count - 1)
+                    )
+                    + features["spectral_centroid_hz"]
+                )
+                / profile.captures_count,
+            }
+        )
+    else:
+        speaker_id = f"spk_{uuid.uuid4().hex[:10]}"
+        profile = SpeakerProfile(
+            id=speaker_id,
+            created_at=now,
+            updated_at=now,
+            first_capture_id=capture_id,
+            last_capture_id=capture_id,
+            captures_count=1,
+            average_similarity=1.0,
+            gender_estimate=features["gender_estimate"],
+            age_estimate=features["age_estimate"],
+            age_range=features["age_range"],
+            confidence=features["confidence"],
+            embedding=embedding.tolist(),
+            metadata={
+                "last_frequency_hz": frequency_hz,
+                "last_transcript": transcript,
+                "source": source,
+                "last_pitch_proxy_hz": features["pitch_proxy_hz"],
+                "last_spectral_centroid_hz": features["spectral_centroid_hz"],
+                "pitch_proxy_hz_avg": features["pitch_proxy_hz"],
+                "spectral_centroid_hz_avg": features["spectral_centroid_hz"],
+            },
+        )
+        SPEAKER_PROFILES[profile.id] = profile
+
+    background_tasks.add_task(_persist_speaker_profiles)
+
+    return SpeakerIdentificationResult(
+        speaker_id=profile.id,
+        matched_existing_profile=matched_existing,
+        similarity=(match["similarity"] if matched_existing else 1.0),
+        profile=profile,
+    )
+
+
+@app.get("/voice/speakers", tags=["ml"], response_model=List[SpeakerProfile])
+async def list_speaker_profiles(limit: int = Query(100, ge=1, le=1000)):
+    """List known speaker profiles ordered by most recently updated."""
+    profiles = sorted(
+        SPEAKER_PROFILES.values(), key=lambda p: p.updated_at, reverse=True
+    )
+    return profiles[:limit]
+
+
+@app.get("/voice/speakers/{speaker_id}", tags=["ml"], response_model=SpeakerProfile)
+async def get_speaker_profile(speaker_id: str):
+    """Get one speaker profile."""
+    profile = SPEAKER_PROFILES.get(speaker_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Speaker profile not found")
+    return profile
 
 
 @app.websocket("/realtime/alerts")
