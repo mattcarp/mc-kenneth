@@ -675,6 +675,7 @@ class AutonomousVoiceHunter:
         self.logger.info(f"   Aviation Finds: {self.stats['aviation_finds']}")
         self.logger.info(f"   Total Voice Time: {self.stats['total_voice_time']/60:.1f} minutes")
         self.logger.info(f"   Captures Saved: {self.stats['captures_saved']}")
+        self.logger.info(f"   Transcriptions: {len(self.transcriptions)}")
         self.logger.info(f"   Errors: {self.stats['errors']}")
         
     def final_summary(self):
@@ -693,6 +694,7 @@ class AutonomousVoiceHunter:
         self.logger.info(f"   Aviation Finds: {self.stats['aviation_finds']}")
         self.logger.info(f"   Total Voice Time: {self.stats['total_voice_time']/60:.1f} minutes")
         self.logger.info(f"   Captures Saved: {self.stats['captures_saved']}")
+        self.logger.info(f"   Transcriptions: {len(self.transcriptions)}")
         self.logger.info(f"   Errors: {self.stats['errors']}")
         self.logger.info(f"\n📁 All captures saved to: {self.session_dir}")
         
@@ -709,10 +711,13 @@ class AutonomousVoiceHunter:
                     'freq_name': cap['freq_name'],
                     'timestamp': cap['timestamp'].isoformat(),
                     'duration': cap['duration'],
-                    'type': cap['type']
+                    'type': cap['type'],
+                    'transcript': cap.get('transcript'),
+                    'transcript_language': cap.get('transcript_language'),
                 }
                 for cap in self.voice_captures
             ]
+            summary_data['transcriptions'] = self.transcriptions
             json.dump(summary_data, f, indent=2)
             
         self.logger.info(f"📋 Session summary saved: {summary_file}")
@@ -725,6 +730,18 @@ class AutonomousVoiceHunter:
             return
             
         self.logger.info(f"\n🔧 Processing {len(self.voice_captures)} voice captures through ElevenLabs...")
+
+        for capture in self.voice_captures:
+            if capture.get("transcript"):
+                continue
+            transcript = self._auto_transcribe_capture(
+                Path(capture["file"]),
+                capture["freq_name"],
+                capture["frequency"],
+            )
+            if transcript:
+                capture["transcript"] = transcript.get("text", "")
+                capture["transcript_language"] = transcript.get("language")
         
         try:
             sys.path.insert(0, 'src')

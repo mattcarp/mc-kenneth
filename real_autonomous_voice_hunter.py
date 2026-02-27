@@ -19,6 +19,11 @@ from scipy import signal
 import queue
 import os
 import random
+from whisper_transcription import (
+    WhisperConfig,
+    WhisperDependencyError,
+    transcribe_audio_file,
+)
 
 class RealAutonomousVoiceHunter:
     """Real autonomous scanner using actual SDRplay hardware"""
@@ -83,6 +88,9 @@ class RealAutonomousVoiceHunter:
         self.total_scans = 0
         self.voice_detections = 0
         self.captures_saved = 0
+        self.transcripts_dir = self.session_dir / "transcripts"
+        self.transcripts_dir.mkdir(parents=True, exist_ok=True)
+        self.whisper_model_size = os.getenv("KENNETH_WHISPER_MODEL", "large-v3")
         
     def setup_logging(self):
         """Setup logging for autonomous operation"""
@@ -97,6 +105,23 @@ class RealAutonomousVoiceHunter:
             ]
         )
         self.logger = logging.getLogger(__name__)
+
+    def _auto_transcribe_capture(self, audio_file: Path, frequency_name: str):
+        """Transcribe saved captures with faster-whisper when available."""
+        try:
+            transcript = transcribe_audio_file(
+                audio_file,
+                WhisperConfig(model_size=self.whisper_model_size),
+            )
+            text_file = self.transcripts_dir / f"{audio_file.stem}.txt"
+            text_file.write_text((transcript.get("text") or "").strip() + "\n", encoding="utf-8")
+            self.logger.info(f"   📝 Transcript saved: {text_file.name}")
+            return transcript
+        except WhisperDependencyError as exc:
+            self.logger.warning(f"   ⚠️  Transcription skipped: {exc}")
+        except Exception as exc:
+            self.logger.warning(f"   ⚠️  Transcription failed for {frequency_name}: {exc}")
+        return None
         
     def attempt_real_rf_capture(self, frequency_name, frequency_hz, duration):
         """YOLO real RF capture from SDRplay/RTL-SDR"""
@@ -415,6 +440,7 @@ class RealAutonomousVoiceHunter:
             self.voice_detections += 1
             self.captures_saved += 1
             self.logger.info(f"   ✅ HUMAN SPEECH DETECTED! ({source_type})")
+            self._auto_transcribe_capture(Path(audio_file), frequency_name)
             return True, audio_file, voice_score
         else:
             # Remove non-voice files to save space
@@ -435,6 +461,7 @@ class RealAutonomousVoiceHunter:
         if extended_file:
             self.logger.info(f"   ✅ Extended capture complete!")
             self.logger.info(f"   📁 Saved: {Path(extended_file).name}")
+            self._auto_transcribe_capture(Path(extended_file), frequency_name)
         
         # Monitor for continued activity
         self.logger.info(f"   📻 Monitoring for continued activity...")
@@ -458,6 +485,7 @@ class RealAutonomousVoiceHunter:
                     new_name = str(capture_file).replace('.wav', f'_continued_{continued_captures:02d}.wav')
                     Path(capture_file).rename(new_name)
                     self.logger.info(f"   📁 Additional capture: {Path(new_name).name}")
+                    self._auto_transcribe_capture(Path(new_name), frequency_name)
             else:
                 break
         
