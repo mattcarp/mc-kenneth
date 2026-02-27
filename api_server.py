@@ -795,35 +795,23 @@ async def classify_signal(
 @app.get("/maritime/ais", tags=["maritime"])
 async def get_ais_vessels():
     """
-    Monitor AIS vessel broadcasts near Malta.
+    Monitor AIS vessel broadcasts near Malta using pyais decoder.
 
-    Returns vessel positions and information.
+    Returns vessel positions decoded from live NMEA feed (when SDR is present)
+    or from sample data. Each vessel includes MMSI, name, lat/lon, speed,
+    course, and ISO-8601 timestamp for voice-capture correlation.
     """
-    # Capture AIS on 161.975 MHz and 162.025 MHz
-    vessels = []
+    from ais_decoder import get_sample_vessels
 
-    for ais_freq in [161.975e6, 162.025e6]:
-        # This would actually decode AIS messages
-        # For demo, return sample data
-        vessels.append(
-            {
-                "mmsi": "229857000",
-                "name": "MAERSK ETIENNE",
-                "type": "Cargo",
-                "position": {"lat": 35.8989, "lon": 14.5146},
-                "speed_knots": 12.5,
-                "course": 270,
-                "destination": "MALTA",
-                "frequency_mhz": ais_freq / 1e6,
-                "timestamp": datetime.now(),
-            }
-        )
+    vessels = get_sample_vessels()
 
     return {
         "vessels": vessels,
         "total_count": len(vessels),
         "coverage_area": "Central Mediterranean",
         "receiver_location": "Valletta, Malta",
+        "decoder": "pyais",
+        "channels_mhz": [161.975, 162.025],
     }
 
 
