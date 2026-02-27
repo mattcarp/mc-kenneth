@@ -18,6 +18,11 @@ import logging
 from scipy import signal
 import queue
 import os
+from whisper_transcription import (
+    WhisperConfig,
+    WhisperDependencyError,
+    transcribe_audio_file,
+)
 
 class AutonomousVoiceHunter:
     """Extended autonomous scanner for real RF voice communications"""
@@ -176,6 +181,10 @@ class AutonomousVoiceHunter:
         
         # Captured files for later processing
         self.voice_captures = []
+        self.transcripts_dir = self.session_dir / "transcripts"
+        self.transcripts_dir.mkdir(parents=True, exist_ok=True)
+        self.transcriptions = []
+        self.whisper_model_size = os.getenv("KENNETH_WHISPER_MODEL", "large-v3")
         
         self.logger.info(f"🎯 Autonomous Voice Hunter initialized")
         self.logger.info(f"Session: {session_name}")
@@ -195,6 +204,47 @@ class AutonomousVoiceHunter:
             ]
         )
         self.logger = logging.getLogger(__name__)
+
+    def _save_transcription_artifacts(self, audio_file: Path, transcript: dict):
+        """Persist text + JSON transcription outputs next to the session captures."""
+        transcript_stem = audio_file.stem
+        text_file = self.transcripts_dir / f"{transcript_stem}.txt"
+        json_file = self.transcripts_dir / f"{transcript_stem}.json"
+
+        text_file.write_text((transcript.get("text") or "").strip() + "\n", encoding="utf-8")
+        json_file.write_text(json.dumps(transcript, indent=2), encoding="utf-8")
+        return text_file, json_file
+
+    def _auto_transcribe_capture(self, audio_file: Path, freq_name: str, frequency_hz: float):
+        """Run faster-whisper transcription immediately after a capture is saved."""
+        try:
+            transcript = transcribe_audio_file(
+                audio_file,
+                WhisperConfig(model_size=self.whisper_model_size),
+            )
+            text_file, json_file = self._save_transcription_artifacts(audio_file, transcript)
+
+            record = {
+                "file": str(audio_file),
+                "freq_name": freq_name,
+                "frequency": frequency_hz,
+                "text": transcript.get("text", ""),
+                "language": transcript.get("language"),
+                "text_path": str(text_file),
+                "json_path": str(json_file),
+            }
+            self.transcriptions.append(record)
+
+            snippet = (record["text"][:120] + "...") if len(record["text"]) > 120 else record["text"]
+            self.logger.info(f"   📝 Transcript saved: {text_file.name}")
+            if snippet:
+                self.logger.info(f"   🗣️  Transcript: {snippet}")
+            return transcript
+        except WhisperDependencyError as exc:
+            self.logger.warning(f"   ⚠️  Transcription skipped: {exc}")
+        except Exception as exc:
+            self.logger.error(f"   ❌ Transcription failed: {exc}")
+        return None
         
     def create_rf_sample(self, frequency_hz, duration, gain=40):
         """Create realistic RF sample based on frequency characteristics"""
@@ -469,6 +519,10 @@ class AutonomousVoiceHunter:
                 'type': comm_type
             }
             self.voice_captures.append(capture_info)
+            transcript = self._auto_transcribe_capture(filepath, freq_name, frequency_hz)
+            if transcript:
+                capture_info["transcript"] = transcript.get("text", "")
+                capture_info["transcript_language"] = transcript.get("language")
             
             self.logger.info(f"   ✅ Extended capture complete!")
             self.logger.info(f"   📁 Saved: {filename}")
@@ -511,6 +565,7 @@ class AutonomousVoiceHunter:
                 sf.write(additional_filepath, monitor_sample, sample_rate)
                 
                 self.logger.info(f"   📁 Additional capture: {additional_filename}")
+                self._auto_transcribe_capture(additional_filepath, freq_name, frequency_hz)
                 
             else:
                 consecutive_quiet_periods += 1

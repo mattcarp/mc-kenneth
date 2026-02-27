@@ -8,6 +8,8 @@
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/wavesurfer.js@7/dist/wavesurfer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -130,7 +132,7 @@
 
     .voice-list {
       flex: 0 0 auto;
-      max-height: 200px;
+      max-height: 360px;
       overflow-y: auto;
     }
 
@@ -142,6 +144,74 @@
 
     .voice-card .ts { color: #8b949e; }
     .voice-card .freq { color: #58a6ff; }
+    .voice-card .meta-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 3px 0 6px 0;
+    }
+    .stress-badge {
+      background: #30363d;
+      border: 1px solid #484f58;
+      border-radius: 3px;
+      color: #c9d1d9;
+      font-size: 0.62rem;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
+    .audio-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      width: 100%;
+    }
+    .audio-controls button {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      font-size: 0.66rem;
+      padding: 3px 8px;
+      cursor: pointer;
+    }
+    .audio-controls button:hover {
+      background: #30363d;
+    }
+    .audio-controls input[type="range"] {
+      flex: 1;
+      accent-color: #58a6ff;
+    }
+    .audio-time {
+      color: #8b949e;
+      font-size: 0.62rem;
+      min-width: 70px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .waveform {
+      margin-top: 6px;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0f141b;
+      min-height: 68px;
+    }
+    .waveform.empty {
+      min-height: 28px;
+      padding: 6px 8px;
+      color: #8b949e;
+      font-size: 0.66rem;
+      border-style: dashed;
+    }
+    .timeline-wrap {
+      padding-top: 4px;
+    }
+    .timeline-empty {
+      color: #8b949e;
+      font-size: 0.7rem;
+      margin-top: 6px;
+    }
 
     .stat { display: flex; justify-content: space-between; font-size: 0.75rem; margin: 3px 0; }
     .stat-val { color: #58a6ff; }
@@ -203,6 +273,15 @@
 
     <!-- Voice Captures -->
     <div class="sidebar-section">
+      <h2>Stress Timeline</h2>
+      <div class="timeline-wrap">
+        <canvas id="stress-timeline" height="130"></canvas>
+        <div class="timeline-empty" id="timeline-empty">No stress datapoints yet.</div>
+      </div>
+    </div>
+
+    <!-- Voice Captures -->
+    <div class="sidebar-section">
       <h2>Recent Voice Captures</h2>
     </div>
     <div class="voice-list" id="voice-list">
@@ -255,22 +334,78 @@ function haversine(lat1, lon1, lat2, lon2) {
 // ── Voice capture store ────────────────────────────────────────────────────
 // Populated from /alerts — we treat marine-VHF alerts as voice proxies.
 let voiceCaptures = [];
+const voiceWaveforms = new Map();
+let stressTimelineChart = null;
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function parseTimestamp(value) {
+  const dt = value ? new Date(value) : null;
+  if (!dt || Number.isNaN(dt.getTime())) return new Date();
+  return dt;
+}
+
+function formatTimecode(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatTimestampUTC(date) {
+  return `${date.toISOString().replace('T', ' ').slice(0, 19)} UTC`;
+}
+
+function readStressScore(alert) {
+  const md = alert.metadata || {};
+  const candidates = [
+    md.stress_score,
+    md.stress_level,
+    md.stress,
+    md.emotions?.stress_level,
+    alert.stress_level,
+  ];
+
+  for (const raw of candidates) {
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric)) {
+      const normalized = numeric <= 1 ? numeric * 100 : numeric;
+      return Math.round(clamp(normalized, 0, 100));
+    }
+  }
+  return null;
+}
+
+function resolveAudioUrl(rawAudioUrl) {
+  if (!rawAudioUrl || typeof rawAudioUrl !== 'string') return null;
+  if (rawAudioUrl.startsWith('http://') || rawAudioUrl.startsWith('https://') || rawAudioUrl.startsWith('/')) {
+    return rawAudioUrl;
+  }
+  const filename = rawAudioUrl.split('/').pop();
+  return filename ? `/api/audio/${encodeURIComponent(filename)}` : null;
+}
 
 async function fetchVoiceCaptures() {
   try {
     const r = await fetch(ALERTS_URL);
     if (!r.ok) return;
     const data = await r.json();
+    const alerts = Array.isArray(data) ? data : (data.alerts || []);
+
     // Filter alerts tagged as marine voice captures
-    voiceCaptures = (data.alerts || []).filter(a =>
+    voiceCaptures = alerts.filter(a =>
       a.signal_type === 'marine_vhf' || (a.tags || []).includes('voice')
     ).map(a => ({
       id: a.id,
-      timestamp: new Date(a.timestamp),
+      timestamp: parseTimestamp(a.created_at || a.timestamp),
       freq_mhz: a.frequency_mhz,
       title: a.title,
-      lat: a.lat ?? null,   // may not be present
-      lon: a.lon ?? null,
+      lat: a.metadata?.lat ?? a.lat ?? null,   // may not be present
+      lon: a.metadata?.lon ?? a.lon ?? null,
+      stress: readStressScore(a),
+      audio_url: resolveAudioUrl(a.audio_url || a.metadata?.audio_url),
     }));
   } catch (_) {
     // API unavailable — leave voiceCaptures as-is
@@ -279,12 +414,12 @@ async function fetchVoiceCaptures() {
 
 // ── Correlation logic ──────────────────────────────────────────────────────
 function correlate(vessel, captures) {
-  if (!vessel.lat || !vessel.lon) return [];
+  if (vessel.lat == null || vessel.lon == null) return [];
   const vesselTime = new Date(vessel.timestamp);
   return captures.filter(cap => {
     const timeDiff = Math.abs(vesselTime - cap.timestamp) / 60000; // minutes
     if (timeDiff > CORR_TIME_MIN) return false;
-    if (cap.lat && cap.lon) {
+    if (cap.lat != null && cap.lon != null) {
       const dist = haversine(vessel.lat, vessel.lon, cap.lat, cap.lon);
       return dist <= CORR_DIST_KM;
     }
@@ -362,15 +497,163 @@ function renderVoiceCaptures() {
     return;
   }
 
-  voiceCaptures.slice(0, 20).forEach(cap => {
+  const captures = voiceCaptures.slice(0, 20);
+  captures.forEach((cap, idx) => {
     const card = document.createElement('div');
     card.className = 'voice-card';
+    const stressLabel = cap.stress == null ? 'Stress: N/A' : `Stress: ${cap.stress}/100`;
+    const clipId = `clip-${cap.id || idx}`;
+    const waveformId = `wave-${cap.id || idx}`;
     card.innerHTML = `
       <div class="freq">📻 ${cap.freq_mhz ? cap.freq_mhz.toFixed(3) + ' MHz' : 'Marine VHF'}</div>
       <div>${cap.title}</div>
-      <div class="ts">${cap.timestamp.toISOString().replace('T',' ').slice(0,19)} UTC</div>
+      <div class="meta-row">
+        <div class="ts">${formatTimestampUTC(cap.timestamp)}</div>
+        <span class="stress-badge">${stressLabel}</span>
+      </div>
     `;
+
+    if (cap.audio_url) {
+      card.insertAdjacentHTML('beforeend', `
+        <audio id="${clipId}" src="${cap.audio_url}" preload="metadata"></audio>
+        <div id="${waveformId}" class="waveform"></div>
+        <div class="audio-controls">
+          <button type="button" data-action="play">Play</button>
+          <button type="button" data-action="pause">Pause</button>
+          <input type="range" min="0" max="100" value="0" step="0.1" />
+          <span class="audio-time">00:00 / 00:00</span>
+        </div>
+      `);
+    } else {
+      card.insertAdjacentHTML('beforeend', `<div class="waveform empty">No audio clip attached to this alert.</div>`);
+    }
+
     listEl.appendChild(card);
+
+    if (cap.audio_url) {
+      setupAudioControls(card, clipId, waveformId);
+    }
+  });
+
+  renderStressTimeline(voiceCaptures);
+}
+
+function setupAudioControls(card, clipId, waveformId) {
+  const audio = card.querySelector(`#${clipId}`);
+  const waveformContainer = card.querySelector(`#${waveformId}`);
+  const playBtn = card.querySelector('button[data-action="play"]');
+  const pauseBtn = card.querySelector('button[data-action="pause"]');
+  const slider = card.querySelector('input[type="range"]');
+  const timeEl = card.querySelector('.audio-time');
+
+  if (!audio || !playBtn || !pauseBtn || !slider || !timeEl) return;
+
+  playBtn.addEventListener('click', () => audio.play());
+  pauseBtn.addEventListener('click', () => audio.pause());
+
+  slider.addEventListener('input', () => {
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    audio.currentTime = (Number(slider.value) / 100) * audio.duration;
+  });
+
+  const refreshUi = () => {
+    const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+    const current = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+    slider.value = duration > 0 ? ((current / duration) * 100).toFixed(2) : '0';
+    timeEl.textContent = `${formatTimecode(current)} / ${formatTimecode(duration)}`;
+  };
+
+  audio.addEventListener('loadedmetadata', refreshUi);
+  audio.addEventListener('timeupdate', refreshUi);
+  audio.addEventListener('ended', refreshUi);
+
+  if (waveformContainer && window.WaveSurfer) {
+    const existing = voiceWaveforms.get(waveformId);
+    if (existing) {
+      existing.destroy();
+      voiceWaveforms.delete(waveformId);
+    }
+    try {
+      const ws = WaveSurfer.create({
+        container: waveformContainer,
+        media: audio,
+        height: 66,
+        waveColor: '#5d738a',
+        progressColor: '#58a6ff',
+        cursorColor: '#f78166',
+        barWidth: 2,
+        barGap: 1,
+        normalize: true,
+      });
+      voiceWaveforms.set(waveformId, ws);
+    } catch (_) {
+      waveformContainer.classList.add('empty');
+      waveformContainer.textContent = 'Waveform unavailable for this clip.';
+    }
+  }
+}
+
+function renderStressTimeline(captures) {
+  const points = captures
+    .filter(c => c.stress != null)
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  const emptyState = document.getElementById('timeline-empty');
+  if (!points.length) {
+    if (emptyState) emptyState.style.display = 'block';
+    if (stressTimelineChart) {
+      stressTimelineChart.destroy();
+      stressTimelineChart = null;
+    }
+    return;
+  }
+  if (emptyState) emptyState.style.display = 'none';
+
+  const labels = points.map(p => p.timestamp.toISOString().slice(11, 19));
+  const values = points.map(p => p.stress);
+  const canvas = document.getElementById('stress-timeline');
+  if (!canvas) return;
+
+  if (stressTimelineChart) {
+    stressTimelineChart.data.labels = labels;
+    stressTimelineChart.data.datasets[0].data = values;
+    stressTimelineChart.update();
+    return;
+  }
+
+  stressTimelineChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Stress',
+        data: values,
+        borderColor: '#f78166',
+        backgroundColor: 'rgba(247,129,102,0.18)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          ticks: { color: '#8b949e', maxTicksLimit: 6 },
+          grid: { color: '#21262d' },
+        },
+        y: {
+          min: 0,
+          max: 100,
+          ticks: { color: '#8b949e', stepSize: 20 },
+          grid: { color: '#21262d' },
+        },
+      },
+      plugins: {
+        legend: { display: false },
+      },
+    },
   });
 }
 
@@ -382,10 +665,11 @@ async function refresh() {
       fetchVoiceCaptures(),
     ]);
 
+    renderVoiceCaptures();
+
     if (aisRes.ok) {
       const data = await aisRes.json();
       renderVessels(data.vessels || []);
-      renderVoiceCaptures();
       document.getElementById('stat-updated').textContent =
         new Date().toISOString().slice(11, 19) + ' UTC';
     }
