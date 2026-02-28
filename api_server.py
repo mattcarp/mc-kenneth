@@ -22,9 +22,11 @@ from enum import Enum
 import asyncio
 import numpy as np
 from datetime import datetime
+from dataclasses import asdict
 import subprocess
 import os
 from api_maritime_aviation import add_maritime_aviation_routes
+from stress_scorer import score_stress
 
 # Initialize FastAPI with rich metadata
 app = FastAPI(
@@ -228,6 +230,15 @@ class ThreatAssessment(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
+class StressScoreRequest(BaseModel):
+    """Voice stress scoring request."""
+
+    audio_path: str = Field(..., description="Path to local audio file")
+    frequency: Optional[float] = Field(
+        default=None, description="Optional reference frequency in Hz"
+    )
+
+
 # ==================== SIGNAL CAPTURE ====================
 
 
@@ -402,6 +413,25 @@ async def classify_signal(
             )
         },
     )
+
+
+# ==================== VOICE STRESS ====================
+
+
+@app.post("/stress", tags=["analysis"], response_model=Dict[str, Any])
+async def score_voice_stress(request: StressScoreRequest):
+    """
+    Score stress indicators from a voice audio file.
+
+    Returns stress score, alert level, triggered indicators, and extracted features.
+    """
+    try:
+        result = score_stress(request.audio_path, request.frequency)
+        return asdict(result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stress scoring failed: {str(e)}")
 
 
 # ==================== MARITIME INTELLIGENCE ====================
