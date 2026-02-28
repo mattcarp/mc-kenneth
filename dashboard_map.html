@@ -305,6 +305,7 @@
 const API_BASE      = window.location.origin;
 const AIS_URL       = `${API_BASE}/maritime/ais`;
 const ALERTS_URL    = `${API_BASE}/alerts?limit=50`;
+const ALERTS_WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/realtime/alerts`;
 const REFRESH_MS    = 10_000;
 const CORR_TIME_MIN = 5;          // minutes for voice→vessel time window
 const CORR_DIST_KM  = 50;         // km for voice→vessel distance window
@@ -336,6 +337,13 @@ function haversine(lat1, lon1, lat2, lon2) {
 let voiceCaptures = [];
 const voiceWaveforms = new Map();
 let stressTimelineChart = null;
+let alertsSocket = null;
+let wsHeartbeatTimer = null;
+let wsReconnectTimer = null;
+let refreshInFlight = false;
+let refreshQueued = false;
+let pollingTimer = null;
+let countdown = REFRESH_MS / 1000;
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -385,6 +393,13 @@ function resolveAudioUrl(rawAudioUrl) {
   }
   const filename = rawAudioUrl.split('/').pop();
   return filename ? `/api/audio/${encodeURIComponent(filename)}` : null;
+}
+
+function destroyWaveforms() {
+  for (const ws of voiceWaveforms.values()) {
+    try { ws.destroy(); } catch (_) {}
+  }
+  voiceWaveforms.clear();
 }
 
 async function fetchVoiceCaptures() {
@@ -489,6 +504,7 @@ function renderVessels(vessels) {
 
 function renderVoiceCaptures() {
   const listEl = document.getElementById('voice-list');
+  destroyWaveforms();
   listEl.innerHTML = '';
   document.getElementById('stat-voices').textContent = voiceCaptures.length;
 
@@ -659,6 +675,12 @@ function renderStressTimeline(captures) {
 
 // ── Main refresh loop ──────────────────────────────────────────────────────
 async function refresh() {
+  if (refreshInFlight) {
+    refreshQueued = true;
+    return;
+  }
+  refreshInFlight = true;
+
   try {
     const [aisRes] = await Promise.all([
       fetch(AIS_URL),
@@ -675,23 +697,101 @@ async function refresh() {
     }
   } catch (e) {
     console.warn('AIS fetch failed:', e);
+  } finally {
+    refreshInFlight = false;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refresh();
+      return;
+    }
+    countdown = REFRESH_MS / 1000;
   }
 }
 
-// Countdown timer
-let countdown = REFRESH_MS / 1000;
-setInterval(() => {
-  countdown--;
-  if (countdown <= 0) {
-    countdown = REFRESH_MS / 1000;
-    refresh();
+function startPolling() {
+  if (pollingTimer) return;
+  pollingTimer = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      refresh();
+    }
+    document.getElementById('refresh-countdown').textContent = `Refresh in ${countdown}s`;
+  }, 1000);
+}
+
+function stopPolling() {
+  if (!pollingTimer) return;
+  clearInterval(pollingTimer);
+  pollingTimer = null;
+}
+
+function scheduleWsReconnect() {
+  if (wsReconnectTimer) return;
+  wsReconnectTimer = setTimeout(() => {
+    wsReconnectTimer = null;
+    connectAlertsStream();
+  }, 2500);
+}
+
+function connectAlertsStream() {
+  if (alertsSocket && (alertsSocket.readyState === WebSocket.OPEN || alertsSocket.readyState === WebSocket.CONNECTING)) {
+    return;
   }
-  document.getElementById('refresh-countdown').textContent =
-    `Refresh in ${countdown}s`;
-}, 1000);
+  if (!('WebSocket' in window)) {
+    startPolling();
+    return;
+  }
+
+  try {
+    alertsSocket = new WebSocket(ALERTS_WS_URL);
+  } catch (_) {
+    startPolling();
+    return;
+  }
+
+  alertsSocket.addEventListener('open', () => {
+    stopPolling();
+    document.getElementById('refresh-countdown').textContent = 'Live updates via WebSocket';
+    if (wsHeartbeatTimer) clearInterval(wsHeartbeatTimer);
+    wsHeartbeatTimer = setInterval(() => {
+      if (alertsSocket && alertsSocket.readyState === WebSocket.OPEN) {
+        alertsSocket.send('ping');
+      }
+    }, 20_000);
+  });
+
+  alertsSocket.addEventListener('message', (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      if (payload?.type === 'alert') {
+        refresh();
+      }
+    } catch (_) {
+      // Ignore malformed payloads.
+    }
+  });
+
+  alertsSocket.addEventListener('close', () => {
+    document.getElementById('refresh-countdown').textContent = 'WebSocket offline, polling every 10s';
+    if (wsHeartbeatTimer) {
+      clearInterval(wsHeartbeatTimer);
+      wsHeartbeatTimer = null;
+    }
+    startPolling();
+    scheduleWsReconnect();
+  });
+
+  alertsSocket.addEventListener('error', () => {
+    if (alertsSocket) {
+      alertsSocket.close();
+    }
+  });
+}
 
 // Initial load
 refresh();
+connectAlertsStream();
+startPolling();
 </script>
 </body>
 </html>

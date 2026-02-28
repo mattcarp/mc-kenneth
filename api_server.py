@@ -18,6 +18,7 @@ from fastapi import (
     Form,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict, Any, Tuple
 from enum import Enum
@@ -32,6 +33,7 @@ import io
 import wave
 import urllib.request
 import urllib.error
+from pathlib import Path
 from api_maritime_aviation import add_maritime_aviation_routes
 
 # Initialize FastAPI with rich metadata
@@ -345,6 +347,10 @@ class SpeakerIdentificationResult(BaseModel):
 SPEAKER_DB_PATH = os.getenv("SPEAKER_DB_PATH", "/tmp/speaker_profiles_db.json")
 SPEAKER_MATCH_THRESHOLD = float(os.getenv("SPEAKER_MATCH_THRESHOLD", "0.97"))
 SPEAKER_PROFILES: Dict[str, SpeakerProfile] = {}
+AUDIO_SEARCH_DIRS = [
+    Path(os.getenv("AUDIO_CAPTURE_DIR", "/tmp")),
+    Path(__file__).resolve().parent / "audio_samples",
+]
 
 
 def _is_distress_alert(payload: AlertCreate) -> bool:
@@ -552,6 +558,25 @@ def _normalize_frequency_mhz(payload: AlertCreate) -> Optional[float]:
         return payload.frequency_mhz
     if payload.frequency_hz is not None:
         return payload.frequency_hz / 1e6
+    return None
+
+
+def _resolve_audio_file(filename: str) -> Optional[Path]:
+    # Restrict resolution to basename-only lookups inside known audio dirs.
+    candidate_name = Path(filename).name
+    if not candidate_name:
+        return None
+
+    for base_dir in AUDIO_SEARCH_DIRS:
+        try:
+            candidate = (base_dir / candidate_name).resolve()
+            candidate.relative_to(base_dir.resolve())
+        except (FileNotFoundError, RuntimeError, ValueError):
+            continue
+
+        if candidate.is_file():
+            return candidate
+
     return None
 
 
@@ -1014,6 +1039,19 @@ async def get_alert(alert_id: str):
         if alert.id == alert_id:
             return alert
     raise HTTPException(status_code=404, detail="Alert not found")
+
+
+@app.get("/api/audio/{filename}", tags=["alerts"])
+async def get_audio_clip(filename: str):
+    """
+    Serve audio clips by filename for dashboard playback.
+    """
+    audio_path = _resolve_audio_file(filename)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio clip not found")
+
+    media_type = "audio/wav" if audio_path.suffix.lower() == ".wav" else "application/octet-stream"
+    return FileResponse(str(audio_path), media_type=media_type, filename=audio_path.name)
 
 
 @app.post(
