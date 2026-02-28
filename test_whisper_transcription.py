@@ -103,3 +103,61 @@ def test_autonomous_hunter_auto_transcribe_writes_artifacts(
     assert len(hunter.transcriptions) == 1
     assert (hunter.transcripts_dir / "capture.txt").exists()
     assert (hunter.transcripts_dir / "capture.json").exists()
+
+
+def test_transcribe_audio_file_probes_priority_languages_when_auto_is_uncertain(
+    monkeypatch, tmp_path: Path
+) -> None:
+    audio_path = tmp_path / "sample.wav"
+    _write_test_wav(audio_path)
+
+    calls = []
+    scores = {
+        None: -1.8,
+        "mt": -1.4,
+        "ar": -0.2,
+        "it": -0.6,
+        "en": -0.8,
+    }
+
+    class DummySegment:
+        def __init__(self, text: str, score: float) -> None:
+            self.start = 0.0
+            self.end = 0.5
+            self.text = text
+            self.avg_logprob = score
+
+    class DummyInfo:
+        def __init__(self, language: str, language_probability: float) -> None:
+            self.language = language
+            self.language_probability = language_probability
+            self.duration = 0.5
+
+    class DummyModel:
+        def __init__(self, model_size: str, device: str, compute_type: str) -> None:
+            assert model_size == "large-v3"
+            assert device == "auto"
+            assert compute_type == "default"
+
+        def transcribe(self, audio_file: str, beam_size: int, vad_filter: bool, language=None):
+            calls.append(language)
+            score = scores[language]
+            if language is None:
+                info = DummyInfo(language="de", language_probability=0.31)
+                segment = DummySegment("auto result", score)
+            else:
+                info = DummyInfo(language=language, language_probability=0.95)
+                segment = DummySegment(f"{language} result", score)
+            return iter([segment]), info
+
+    monkeypatch.setitem(
+        sys.modules,
+        "faster_whisper",
+        types.SimpleNamespace(WhisperModel=DummyModel),
+    )
+
+    result = transcribe_audio_file(audio_path, WhisperConfig())
+
+    assert calls == [None, "mt", "ar", "it", "en"]
+    assert result["language"] == "ar"
+    assert result["text"] == "ar result"

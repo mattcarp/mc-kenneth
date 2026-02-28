@@ -52,6 +52,32 @@ def test_non_distress_alert_defaults_to_warning() -> None:
     assert payload["severity"] == "warning"
 
 
+def test_alert_stores_detected_language_from_payload_or_metadata() -> None:
+    explicit = client.post(
+        "/alerts",
+        json={
+            "title": "Voice capture",
+            "signal_type": "marine_vhf",
+            "language": "IT",
+            "source": "kenneth-sdr",
+        },
+    )
+    assert explicit.status_code == 200
+    assert explicit.json()["language"] == "it"
+
+    fallback = client.post(
+        "/alerts",
+        json={
+            "title": "Voice capture metadata fallback",
+            "signal_type": "marine_vhf",
+            "metadata": {"transcript_language": "AR"},
+            "source": "kenneth-sdr",
+        },
+    )
+    assert fallback.status_code == 200
+    assert fallback.json()["language"] == "ar"
+
+
 def test_dispatch_to_mission_control_conversation_and_kanban(monkeypatch) -> None:
     sent = []
 

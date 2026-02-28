@@ -263,6 +263,9 @@ class AlertCreate(BaseModel):
     )
     confidence: float = Field(default=0.5, ge=0, le=1)
     transcript: Optional[str] = None
+    language: Optional[str] = Field(
+        default=None, description="Detected transcript language code (e.g. mt, ar, it, en)"
+    )
     audio_url: Optional[str] = None
     tags: List[str] = Field(default_factory=list)
     metadata: Dict[str, Any] = Field(default_factory=dict)
@@ -287,6 +290,7 @@ class AlertRecord(BaseModel):
     frequency_mhz: Optional[float]
     confidence: float
     transcript: Optional[str]
+    language: Optional[str]
     audio_url: Optional[str]
     tags: List[str]
     metadata: Dict[str, Any]
@@ -558,6 +562,25 @@ def _normalize_frequency_mhz(payload: AlertCreate) -> Optional[float]:
         return payload.frequency_mhz
     if payload.frequency_hz is not None:
         return payload.frequency_hz / 1e6
+    return None
+
+
+def _normalize_language_code(value: Optional[str]) -> Optional[str]:
+    if not value or not isinstance(value, str):
+        return None
+    code = value.strip().lower()
+    return code or None
+
+
+def _resolve_alert_language(payload: AlertCreate) -> Optional[str]:
+    if payload.language:
+        return _normalize_language_code(payload.language)
+    metadata_language = payload.metadata.get("language")
+    if metadata_language:
+        return _normalize_language_code(str(metadata_language))
+    transcript_language = payload.metadata.get("transcript_language")
+    if transcript_language:
+        return _normalize_language_code(str(transcript_language))
     return None
 
 
@@ -1010,6 +1033,7 @@ async def create_alert(
         frequency_mhz=_normalize_frequency_mhz(payload),
         confidence=payload.confidence,
         transcript=payload.transcript,
+        language=_resolve_alert_language(payload),
         audio_url=payload.audio_url,
         tags=payload.tags,
         metadata=payload.metadata,

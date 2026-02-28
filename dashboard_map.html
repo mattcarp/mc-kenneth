@@ -159,6 +159,15 @@
       padding: 1px 6px;
       white-space: nowrap;
     }
+    .language-badge {
+      background: #1f6feb33;
+      border: 1px solid #1f6feb;
+      border-radius: 3px;
+      color: #8cc8ff;
+      font-size: 0.62rem;
+      padding: 1px 6px;
+      white-space: nowrap;
+    }
     .audio-controls {
       display: flex;
       align-items: center;
@@ -386,6 +395,24 @@ function readStressScore(alert) {
   return null;
 }
 
+function readLanguageCode(alert) {
+  const md = alert.metadata || {};
+  const raw = alert.language || md.language || md.transcript_language || null;
+  if (!raw || typeof raw !== 'string') return null;
+  const normalized = raw.trim().toLowerCase();
+  return normalized || null;
+}
+
+function formatLanguageTag(code) {
+  const labels = {
+    mt: 'Maltese',
+    ar: 'Arabic',
+    it: 'Italian',
+    en: 'English',
+  };
+  return labels[code] || code.toUpperCase();
+}
+
 function resolveAudioUrl(rawAudioUrl) {
   if (!rawAudioUrl || typeof rawAudioUrl !== 'string') return null;
   if (rawAudioUrl.startsWith('http://') || rawAudioUrl.startsWith('https://') || rawAudioUrl.startsWith('/')) {
@@ -420,6 +447,7 @@ async function fetchVoiceCaptures() {
       lat: a.metadata?.lat ?? a.lat ?? null,   // may not be present
       lon: a.metadata?.lon ?? a.lon ?? null,
       stress: readStressScore(a),
+      language: readLanguageCode(a),
       audio_url: resolveAudioUrl(a.audio_url || a.metadata?.audio_url),
     }));
   } catch (_) {
@@ -518,6 +546,7 @@ function renderVoiceCaptures() {
     const card = document.createElement('div');
     card.className = 'voice-card';
     const stressLabel = cap.stress == null ? 'Stress: N/A' : `Stress: ${cap.stress}/100`;
+    const languageLabel = cap.language ? `Lang: ${formatLanguageTag(cap.language)}` : 'Lang: N/A';
     const clipId = `clip-${cap.id || idx}`;
     const waveformId = `wave-${cap.id || idx}`;
     card.innerHTML = `
@@ -526,6 +555,7 @@ function renderVoiceCaptures() {
       <div class="meta-row">
         <div class="ts">${formatTimestampUTC(cap.timestamp)}</div>
         <span class="stress-badge">${stressLabel}</span>
+        <span class="language-badge">${languageLabel}</span>
       </div>
     `;
 
