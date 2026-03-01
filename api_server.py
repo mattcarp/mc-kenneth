@@ -725,6 +725,51 @@ async def system_status():
     }
 
 
+
+
+# ==================== KENNETH ALERT ENDPOINT ====================
+
+from kenneth_alert import KennethEvent, send_alert, process_stress_result, format_alert
+
+class AlertRequest(BaseModel):
+    frequency_mhz: float = Field(..., description="Frequency in MHz")
+    stress_score: int = Field(..., ge=0, le=100, description="Stress score 0-100")
+    alert_level: str = Field(..., description="LOW / MEDIUM / HIGH / CRITICAL")
+    transcript: str = Field("", description="Transcribed speech")
+    timestamp: Optional[str] = Field(None, description="ISO timestamp, defaults to now")
+    indicators: List[str] = Field(default_factory=list)
+    channel_name: Optional[str] = Field(None, description="e.g. CH16 Emergency")
+    ais_info: Optional[str] = Field(None, description="AIS vessel info if available")
+    dry_run: bool = Field(False, description="Format alert but don't send")
+
+
+@app.post("/alert", tags=["Kenneth"])
+async def trigger_alert(request: AlertRequest):
+    """
+    Trigger a Kenneth stress alert. Sends via OpenClaw → Mattie's Telegram if thresholds met.
+    Thresholds: >=70% stress OR MAYDAY/SOS keyword in transcript.
+    """
+    from datetime import datetime, timezone
+    ts = request.timestamp or datetime.now(timezone.utc).strftime("%H:%M:%S")
+    event = KennethEvent(
+        frequency_mhz=request.frequency_mhz,
+        stress_score=request.stress_score,
+        alert_level=request.alert_level,
+        transcript=request.transcript,
+        timestamp=ts,
+        indicators=request.indicators,
+        channel_name=request.channel_name,
+        ais_info=request.ais_info,
+    )
+    sent = send_alert(event, dry_run=request.dry_run)
+    return {
+        "alert_sent": sent,
+        "dry_run": request.dry_run,
+        "message_preview": format_alert(event),
+        "stress_score": request.stress_score,
+        "alert_level": request.alert_level,
+    }
+
 # ==================== ROOT REDIRECT ====================
 
 
