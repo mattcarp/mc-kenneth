@@ -32,6 +32,13 @@ from typing import Dict, Optional
 
 import requests
 
+# Keyword detection module
+try:
+    from kenneth_keywords import analyze_transcript as kw_analyze, keyword_alert_level
+    HAS_KEYWORDS = True
+except ImportError:
+    HAS_KEYWORDS = False
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S')
 logger = logging.getLogger('kenneth-alerts')
 
@@ -79,8 +86,13 @@ def _rate_limited(channel_id: str) -> bool:
     return False
 
 
-def _contains_keyword(transcript: str) -> Optional[str]:
-    """Return the matched keyword if transcript contains a distress phrase."""
+def _contains_keyword(transcript: str, stress_score: float = 0.0) -> Optional[str]:
+    """Return the highest-alert matched keyword using kenneth_keywords module."""
+    if HAS_KEYWORDS and transcript:
+        level, phrase = keyword_alert_level(transcript, stress_score=stress_score)
+        if level != "NONE":
+            return phrase
+    # Fallback: basic list
     lower = transcript.lower()
     for kw in DISTRESS_KEYWORDS:
         if kw in lower:
@@ -166,7 +178,7 @@ def maybe_alert(
     Returns a dict describing what action was taken.
     """
     stress_pct = stress_score * 100
-    keyword_match = _contains_keyword(transcript)
+    keyword_match = _contains_keyword(transcript, stress_score=stress_score)
     implicit_level = (implicit_result or {}).get('alert_level', 'NONE')
     implicit_triggers = (implicit_result or {}).get('triggers', [])
 
