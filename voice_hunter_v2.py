@@ -8,6 +8,16 @@ No more false positives on noise.
 import time
 import numpy as np
 import soundfile as sf
+
+# Kenneth alert + implicit distress integration
+try:
+    from kenneth_alerts import maybe_alert
+    from implicit_distress_detector import analyze_audio as implicit_analyze
+    HAS_ALERTS = True
+except ImportError as e:
+    HAS_ALERTS = False
+    import logging as _log
+    _log.getLogger('voice-hunter').warning(f'Alerts/implicit disabled: {e}')
 from pathlib import Path
 from datetime import datetime, timedelta
 import json
@@ -155,6 +165,25 @@ class VoiceHunterV2:
         self.captures.append(capture_info)
         
         logger.info(f"   ✅ Saved: {filename}")
+
+        # Run implicit distress analysis + alert
+        if HAS_ALERTS:
+            try:
+                implicit = implicit_analyze(
+                    str(filepath),
+                    channel_id=channel_id,
+                    stress_score=initial_details.get('voice_score', 0),
+                )
+                maybe_alert(
+                    channel_id=channel_id,
+                    freq_mhz=info['freq'] / 1e6,
+                    stress_score=initial_details.get('voice_score', 0),
+                    transcript='',  # whisper transcription future work
+                    implicit_result=implicit,
+                )
+            except Exception as _ae:
+                logger.warning(f'Alert/implicit error: {_ae}')
+
         return True
     
     def build_scan_order(self):
