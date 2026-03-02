@@ -45,7 +45,7 @@ class VoiceHuntingScanner:
         
         self.sample_duration = 8  # 8-second quick samples
         self.long_sample_duration = 45  # 45-second samples when voice found
-        self.voice_threshold = 0.15  # Voice detection threshold
+        self.voice_threshold = 0.08  # Voice detection threshold (8%)
         
     def create_test_sample(self, frequency, freq_name, has_voice=False):
         """Create realistic RF samples - some with voice, some just noise"""

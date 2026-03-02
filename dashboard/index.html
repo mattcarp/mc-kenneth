@@ -7,6 +7,7 @@
     <style>
       :root {
         --bg: #0a0a0a;
+        --zinc-950: #111113;
         --zinc-900: #18181b;
         --zinc-800: #27272a;
         --zinc-700: #3f3f46;
@@ -25,7 +26,7 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background: radial-gradient(circle at top right, #1f1f22 0%, var(--bg) 45%), var(--bg);
+        background: radial-gradient(circle at top right, #1f1f22 0%, var(--bg) 42%), var(--bg);
         color: var(--zinc-100);
         font-family: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
       }
@@ -46,7 +47,7 @@
 
       h1 {
         margin: 0;
-        font-size: 1.1rem;
+        font-size: 1.08rem;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         color: var(--zinc-300);
@@ -69,11 +70,11 @@
 
       .card {
         grid-column: span 12;
-        background: linear-gradient(180deg, rgba(39, 39, 42, 0.55), rgba(24, 24, 27, 0.85));
+        background: linear-gradient(180deg, rgba(39, 39, 42, 0.52), rgba(24, 24, 27, 0.9));
         border: 1px solid var(--zinc-800);
         border-radius: 12px;
         padding: 14px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
       }
 
       .card h2 {
@@ -91,7 +92,7 @@
       }
 
       .metric {
-        background: rgba(24, 24, 27, 0.8);
+        background: rgba(17, 17, 19, 0.88);
         border: 1px solid var(--zinc-800);
         border-radius: 10px;
         padding: 10px;
@@ -109,9 +110,17 @@
         color: var(--zinc-100);
       }
 
-      .ok { color: var(--green); }
-      .warn { color: var(--amber); }
-      .bad { color: var(--red); }
+      .ok {
+        color: var(--green);
+      }
+
+      .warn {
+        color: var(--amber);
+      }
+
+      .bad {
+        color: var(--red);
+      }
 
       table {
         width: 100%;
@@ -168,7 +177,7 @@
     <main class="wrap">
       <div class="topbar">
         <h1>Kenneth Signal Dashboard</h1>
-        <div class="badge" id="updatedAt">Updating...</div>
+        <div class="badge" id="updatedAt">Refreshing every 10s...</div>
       </div>
 
       <section class="grid">
@@ -190,6 +199,8 @@
     </main>
 
     <script>
+      const REFRESH_MS = 10000;
+
       const statusMetrics = document.getElementById("statusMetrics");
       const capturesContent = document.getElementById("capturesContent");
       const alertsContent = document.getElementById("alertsContent");
@@ -198,29 +209,48 @@
       function fmtDate(iso) {
         if (!iso) return "-";
         const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return "-";
         return dt.toLocaleString();
       }
 
-      function renderStatus(health) {
-        const hackrfClass =
-          health.hackrf_status === "connected" ? "ok" : health.hackrf_status === "unknown" ? "warn" : "bad";
+      function renderStatus(status, health) {
+        const hackrf = status?.hackrf_status || health?.hackrf_status || "unknown";
+        const hackrfClass = hackrf === "connected" ? "ok" : hackrf === "unknown" ? "warn" : "bad";
+        const apiState = health?.status || status?.status || "unknown";
+        const apiClass = apiState === "ok" || apiState === "operational" ? "ok" : "bad";
 
         statusMetrics.innerHTML = `
           <div class="metric">
             <div class="label">API</div>
-            <div class="value ok">${health.status || "unknown"}</div>
+            <div class="value ${apiClass}">${apiState}</div>
           </div>
           <div class="metric">
             <div class="label">HackRF</div>
-            <div class="value ${hackrfClass}">${health.hackrf_status || "unknown"}</div>
+            <div class="value ${hackrfClass}">${hackrf}</div>
           </div>
           <div class="metric">
             <div class="label">Captures</div>
-            <div class="value">${health.captures_count ?? 0}</div>
+            <div class="value">${health?.captures_count ?? 0}</div>
           </div>
           <div class="metric">
             <div class="label">Stress Alerts</div>
-            <div class="value">${health.stress_alerts_count ?? 0}</div>
+            <div class="value">${health?.stress_alerts_count ?? 0}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Coverage</div>
+            <div class="value muted">${status?.coverage || "n/a"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Location</div>
+            <div class="value muted">${status?.location || "n/a"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">API Version</div>
+            <div class="value muted">${health?.api_version || status?.api_version || "n/a"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Server Time</div>
+            <div class="value muted">${fmtDate(status?.timestamp || health?.timestamp)}</div>
           </div>
         `;
       }
@@ -235,13 +265,13 @@
           .slice(0, 15)
           .map(
             (c) => `
-            <tr>
-              <td>${fmtDate(c.created_at)}</td>
-              <td>${Number(c.frequency_mhz || 0).toFixed(3)}</td>
-              <td>${Number(c.duration_sec || 0).toFixed(1)}s</td>
-              <td>${Number(c.average_power_dbfs || 0).toFixed(2)}</td>
-            </tr>
-          `
+              <tr>
+                <td>${fmtDate(c.created_at)}</td>
+                <td>${Number(c.frequency_mhz || 0).toFixed(3)}</td>
+                <td>${Number(c.duration_sec || 0).toFixed(1)}s</td>
+                <td>${Number(c.average_power_dbfs || 0).toFixed(2)}</td>
+              </tr>
+            `
           )
           .join("");
 
@@ -307,26 +337,28 @@
 
       async function refresh() {
         try {
-          const [health, captures, alerts] = await Promise.all([
+          const [status, health, captures, alerts] = await Promise.all([
+            fetchJson("/status"),
             fetchJson("/health"),
             fetchJson("/captures?limit=50"),
             fetchJson("/stress-alerts?limit=50"),
           ]);
 
-          renderStatus(health);
+          renderStatus(status, health);
           renderCaptures(captures);
           renderStressAlerts(alerts);
-          updatedAt.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+          updatedAt.textContent = `Updated ${new Date().toLocaleTimeString()} | Auto-refresh 10s`;
         } catch (err) {
-          statusMetrics.innerHTML = '<div class="metric"><div class="label">Status</div><div class="value bad">API unreachable</div></div>';
+          statusMetrics.innerHTML =
+            '<div class="metric"><div class="label">Status</div><div class="value bad">API unreachable</div></div>';
           capturesContent.innerHTML = `<div class="empty">Error loading captures: ${err.message}</div>`;
           alertsContent.innerHTML = `<div class="empty">Error loading alerts: ${err.message}</div>`;
-          updatedAt.textContent = "Update failed";
+          updatedAt.textContent = "Update failed | Retrying in 10s";
         }
       }
 
       refresh();
-      setInterval(refresh, 10000);
+      setInterval(refresh, REFRESH_MS);
     </script>
   </body>
 </html>

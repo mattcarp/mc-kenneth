@@ -54,6 +54,28 @@ def test_extract_stress_features_non_negative(tmp_path: Path) -> None:
     assert 0 <= features.voiced_ratio <= 1
 
 
+def test_score_stress_supports_dataclass_and_dict() -> None:
+    low = ai_analysis_pipeline.StressFeatures(
+        pitch_variance_hz2=5.0,
+        speech_rate_per_sec=0.2,
+        rms_energy=0.01,
+        voiced_ratio=0.3,
+    )
+    high = {
+        "pitch_variance_hz2": 1800.0,
+        "speech_rate_per_sec": 2.3,
+        "rms_energy": 0.4,
+        "voiced_ratio": 0.9,
+    }
+
+    low_score = ai_analysis_pipeline.score_stress(low)
+    high_score = ai_analysis_pipeline.score_stress(high)
+
+    assert 0 <= low_score <= 100
+    assert 0 <= high_score <= 100
+    assert high_score > low_score
+
+
 def test_classify_threat_keywords_detects_matches() -> None:
     result = ai_analysis_pipeline.classify_threat_keywords(
         "Mayday mayday, we need help immediately. Possible fire in engine room."

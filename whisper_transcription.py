@@ -221,3 +221,23 @@ def transcribe_audio_file(
     result.pop("_score", None)
     result.pop("_requested_language", None)
     return result
+
+
+def transcribe_audio(
+    filepath: str | Path,
+    config: Optional[WhisperConfig] = None,
+) -> str:
+    """
+    Convenience wrapper that returns transcription text only.
+    """
+    result = transcribe_audio_file(filepath, config)
+    return str(result.get("text", "")).strip()
+
+
+__all__ = [
+    "PRIORITY_LANGUAGES",
+    "WhisperConfig",
+    "WhisperDependencyError",
+    "transcribe_audio_file",
+    "transcribe_audio",
+]

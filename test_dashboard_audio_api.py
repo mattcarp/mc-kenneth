@@ -1,7 +1,9 @@
 import sys
 import types
+import wave
 from pathlib import Path
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 # Isolate tests from optional maritime capture dependencies.
@@ -13,6 +15,16 @@ import api_server
 
 
 client = TestClient(api_server.app)
+
+
+def _write_test_wav(path: Path, sample_rate: int = 16000, duration_sec: float = 0.3) -> None:
+    t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
+    signal = (0.2 * np.sin(2.0 * np.pi * 440.0 * t) * 32767).astype(np.int16)
+    with wave.open(str(path), "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(signal.tobytes())
 
 
 def test_audio_api_serves_wav_clip(tmp_path: Path, monkeypatch) -> None:
@@ -34,3 +46,42 @@ def test_audio_api_rejects_unknown_file(tmp_path: Path, monkeypatch) -> None:
     response = client.get("/api/audio/missing.wav")
 
     assert response.status_code == 404
+
+
+def test_transcribe_endpoint_returns_text(tmp_path: Path, monkeypatch) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+    monkeypatch.setattr(api_server, "transcribe_audio", lambda path: "distress call")
+
+    response = client.get("/transcribe", params={"file": "sample.wav"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file"] == "sample.wav"
+    assert body["text"] == "distress call"
+
+
+def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+    monkeypatch.setattr(
+        api_server,
+        "extract_stress_features",
+        lambda path: types.SimpleNamespace(
+            pitch_variance_hz2=320.0,
+            speech_rate_per_sec=0.8,
+            rms_energy=0.12,
+            voiced_ratio=0.7,
+        ),
+    )
+    monkeypatch.setattr(api_server, "score_stress", lambda features: 42)
+
+    response = client.get("/stress", params={"file": "sample.wav"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["file"] == "sample.wav"
+    assert body["stress_score"] == 42
+    assert body["features"]["pitch_variance_hz2"] == 320.0

@@ -36,6 +36,8 @@ import urllib.error
 from pathlib import Path
 from api_maritime_aviation import add_maritime_aviation_routes
 from telegram_alerts import send_alert as send_telegram_alert
+from whisper_transcription import transcribe_audio
+from ai_analysis_pipeline import extract_stress_features, score_stress
 
 # Initialize FastAPI with rich metadata
 app = FastAPI(
@@ -1094,6 +1096,54 @@ async def active_threats():
 
 
 # ==================== ALERTS ====================
+
+
+@app.get("/transcribe", tags=["analysis"])
+async def transcribe(file: str = Query(..., description="Audio filename under known capture dirs")):
+    """
+    Transcribe an audio file and return text only.
+    """
+    audio_path = _resolve_audio_file(file)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    try:
+        text = transcribe_audio(audio_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
+
+    return {"file": audio_path.name, "text": text}
+
+
+@app.get("/stress", tags=["analysis"])
+async def stress(file: str = Query(..., description="Audio filename under known capture dirs")):
+    """
+    Compute stress score (0-100) from audio pitch variance, energy, and rate.
+    """
+    audio_path = _resolve_audio_file(file)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    try:
+        features = extract_stress_features(audio_path)
+        stress_score = score_stress(features)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Stress scoring failed: {exc}")
+
+    return {
+        "file": audio_path.name,
+        "stress_score": stress_score,
+        "features": {
+            "pitch_variance_hz2": features.pitch_variance_hz2,
+            "speech_rate_per_sec": features.speech_rate_per_sec,
+            "rms_energy": features.rms_energy,
+            "voiced_ratio": features.voiced_ratio,
+        },
+    }
 
 
 @app.post("/alerts", tags=["alerts"], response_model=AlertRecord)

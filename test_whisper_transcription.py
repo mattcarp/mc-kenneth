@@ -18,7 +18,7 @@ if "scipy" not in sys.modules:
     sys.modules["scipy"] = scipy_stub
 
 import autonomous_voice_hunter
-from whisper_transcription import WhisperConfig, transcribe_audio_file
+from whisper_transcription import WhisperConfig, transcribe_audio, transcribe_audio_file
 
 
 def _write_test_wav(path: Path, sample_rate: int = 16000, duration_sec: float = 0.2) -> None:
@@ -76,6 +76,24 @@ def test_transcribe_audio_file_uses_faster_whisper(monkeypatch, tmp_path: Path) 
     assert result["language"] == "en"
     assert len(result["segments"]) == 2
     assert result["segments"][0]["text"] == "hello"
+
+
+def test_transcribe_audio_returns_text_only(monkeypatch, tmp_path: Path) -> None:
+    audio_path = tmp_path / "sample.wav"
+    _write_test_wav(audio_path)
+
+    monkeypatch.setattr(
+        "whisper_transcription.transcribe_audio_file",
+        lambda path, config=None: {
+            "text": "  distress message  ",
+            "language": "en",
+            "segments": [{"start": 0.0, "end": 0.5, "text": "distress message"}],
+        },
+    )
+
+    text = transcribe_audio(audio_path)
+
+    assert text == "distress message"
 
 
 def test_autonomous_hunter_auto_transcribe_writes_artifacts(

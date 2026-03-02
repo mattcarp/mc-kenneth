@@ -81,7 +81,7 @@ class RealAutonomousVoiceHunter:
         self.audio_sample_rate = 48000
         
         # Voice detection settings
-        self.voice_threshold = 0.12  # Lower threshold for real signals
+        self.voice_threshold = 0.08  # Voice detection threshold (8%)
         self.lock_duration = 60  # Lock for 60 seconds when voice detected
         
         # Statistics
@@ -158,32 +158,36 @@ class RealAutonomousVoiceHunter:
                     q_samples = iq_samples[1::2].astype(float) - 127.5
                     iq_complex = i_samples + 1j * q_samples
                     
-                    # FM demodulation
-                    phase = np.unwrap(np.angle(iq_complex))
-                    fm_demod = np.diff(phase)
+                    # Aviation (108-137 MHz) uses AM; maritime VHF is narrowband FM.
+                    if 108e6 <= frequency_hz <= 137e6:
+                        audio_demod = np.abs(iq_complex)
+                        audio_demod = audio_demod - np.mean(audio_demod)
+                    else:
+                        phase = np.unwrap(np.angle(iq_complex))
+                        audio_demod = np.diff(phase)
                     
                     # Decimate to audio rate
                     decimation = self.sample_rate // self.audio_sample_rate
                     if decimation > 1:
-                        fm_demod = fm_demod[::decimation]
+                        audio_demod = audio_demod[::decimation]
                     
                     # Audio processing for voice extraction
-                    if len(fm_demod) > 0:
+                    if len(audio_demod) > 0:
                         # Remove DC
-                        fm_demod = fm_demod - np.mean(fm_demod)
+                        audio_demod = audio_demod - np.mean(audio_demod)
                         
                         # Voice band filter (300Hz - 3.4kHz for marine/aviation radio)
                         # Simple high-pass to remove low frequency noise
-                        if len(fm_demod) > 200:
-                            fm_demod = fm_demod - np.convolve(fm_demod, np.ones(100)/100, mode='same')
+                        if len(audio_demod) > 200:
+                            audio_demod = audio_demod - np.convolve(audio_demod, np.ones(100)/100, mode='same')
                         
                         # Normalize 
-                        if np.max(np.abs(fm_demod)) > 0:
-                            fm_demod = fm_demod / np.max(np.abs(fm_demod)) * 0.8
+                        if np.max(np.abs(audio_demod)) > 0:
+                            audio_demod = audio_demod / np.max(np.abs(audio_demod)) * 0.8
                         
                         # Save real RF audio
                         audio_file = self.session_dir / f"REAL_RF_{frequency_name.replace(' ', '_')}_{timestamp}.wav"
-                        sf.write(str(audio_file), fm_demod, self.audio_sample_rate)
+                        sf.write(str(audio_file), audio_demod, self.audio_sample_rate)
                         
                         # Clean up IQ file
                         os.unlink(iq_file)

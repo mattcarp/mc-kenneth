@@ -154,8 +154,19 @@ def extract_stress_features(audio_file_path: str | Path) -> StressFeatures:
     )
 
 
-def compute_stress_score(audio_file_path: str | Path) -> int:
-    features = extract_stress_features(audio_file_path)
+def score_stress(audio_features: StressFeatures | Dict[str, float]) -> int:
+    """
+    Convert stress-related audio features into a 0-100 score.
+    """
+    if isinstance(audio_features, StressFeatures):
+        features = audio_features
+    else:
+        features = StressFeatures(
+            pitch_variance_hz2=float(audio_features.get("pitch_variance_hz2", 0.0)),
+            speech_rate_per_sec=float(audio_features.get("speech_rate_per_sec", 0.0)),
+            rms_energy=float(audio_features.get("rms_energy", 0.0)),
+            voiced_ratio=float(audio_features.get("voiced_ratio", 0.0)),
+        )
 
     pitch_component = min(100.0, (features.pitch_variance_hz2 / 1200.0) * 100.0)
     speech_component = min(
@@ -168,6 +179,11 @@ def compute_stress_score(audio_file_path: str | Path) -> int:
     )
     bounded = int(round(min(100.0, max(0.0, raw_score))))
     return bounded
+
+
+def compute_stress_score(audio_file_path: str | Path) -> int:
+    features = extract_stress_features(audio_file_path)
+    return score_stress(features)
 
 
 def classify_threat_keywords(
@@ -248,4 +264,5 @@ __all__ = [
     "compute_stress_score",
     "extract_stress_features",
     "find_audio_files",
+    "score_stress",
 ]
