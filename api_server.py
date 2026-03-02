@@ -682,6 +682,43 @@ def _resolve_audio_file(filename: str) -> Optional[Path]:
     return None
 
 
+def _transcribe_payload(
+    audio_path: Path,
+    model_size: str,
+    backend: str,
+    language: Optional[str],
+) -> Dict[str, Any]:
+    whisper_config = WhisperConfig(
+        model_size=model_size,
+        backend=backend,
+        language=language,
+    )
+    transcription = transcribe_audio_file(audio_path, whisper_config)
+    return {
+        "file": audio_path.name,
+        "text": str(transcription.get("text", "")).strip(),
+        "language": transcription.get("language"),
+        "segments": transcription.get("segments", []),
+        "backend": transcription.get("backend"),
+        "model": transcription.get("model"),
+    }
+
+
+def _stress_payload(audio_path: Path) -> Dict[str, Any]:
+    features = extract_stress_features(audio_path)
+    stress_score = score_stress(features)
+    return {
+        "file": audio_path.name,
+        "stress_score": stress_score,
+        "features": {
+            "pitch_variance_hz2": features.pitch_variance_hz2,
+            "speech_rate_per_sec": features.speech_rate_per_sec,
+            "rms_energy": features.rms_energy,
+            "voiced_ratio": features.voiced_ratio,
+        },
+    }
+
+
 def _post_json(url: str, payload: Dict[str, Any], headers: Dict[str, str], timeout: int) -> None:
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
@@ -1118,12 +1155,7 @@ async def transcribe(
         raise HTTPException(status_code=404, detail="Audio file not found")
 
     try:
-        whisper_config = WhisperConfig(
-            model_size=model_size,
-            backend=backend,
-            language=language,
-        )
-        transcription = transcribe_audio_file(audio_path, whisper_config)
+        return _transcribe_payload(audio_path, model_size, backend, language)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Audio file not found")
     except ValueError as exc:
@@ -1131,14 +1163,33 @@ async def transcribe(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
 
-    return {
-        "file": audio_path.name,
-        "text": str(transcription.get("text", "")).strip(),
-        "language": transcription.get("language"),
-        "segments": transcription.get("segments", []),
-        "backend": transcription.get("backend"),
-        "model": transcription.get("model"),
-    }
+
+@app.get("/analysis/transcribe", tags=["analysis"])
+async def transcribe_analysis(
+    file: str = Query(..., description="Audio filename under known capture dirs"),
+    model_size: str = Query("large-v3", description="Whisper model size"),
+    backend: str = Query(
+        "auto", description="Whisper backend: auto, faster-whisper, openai-whisper"
+    ),
+    language: Optional[str] = Query(
+        None, description="Optional fixed language hint (e.g. en, mt, ar, it)"
+    ),
+):
+    """
+    Alias of /transcribe for analysis namespace.
+    """
+    audio_path = _resolve_audio_file(file)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    try:
+        return _transcribe_payload(audio_path, model_size, backend, language)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {exc}")
 
 
 @app.get("/stress", tags=["analysis"])
@@ -1151,23 +1202,27 @@ async def stress(file: str = Query(..., description="Audio filename under known 
         raise HTTPException(status_code=404, detail="Audio file not found")
 
     try:
-        features = extract_stress_features(audio_path)
-        stress_score = score_stress(features)
+        return _stress_payload(audio_path)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Audio file not found")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Stress scoring failed: {exc}")
 
-    return {
-        "file": audio_path.name,
-        "stress_score": stress_score,
-        "features": {
-            "pitch_variance_hz2": features.pitch_variance_hz2,
-            "speech_rate_per_sec": features.speech_rate_per_sec,
-            "rms_energy": features.rms_energy,
-            "voiced_ratio": features.voiced_ratio,
-        },
-    }
+@app.get("/analysis/stress", tags=["analysis"])
+async def stress_analysis(file: str = Query(..., description="Audio filename under known capture dirs")):
+    """
+    Alias of /stress for analysis namespace.
+    """
+    audio_path = _resolve_audio_file(file)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    try:
+        return _stress_payload(audio_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Stress scoring failed: {exc}")
 
 
 @app.get("/analysis/audio", tags=["analysis"])

@@ -106,6 +106,30 @@ def test_transcribe_endpoint_returns_bad_request_for_invalid_backend(
     assert "Unsupported whisper backend 'broken'" in response.json()["detail"]
 
 
+def test_analysis_transcribe_endpoint_alias_returns_payload(tmp_path: Path, monkeypatch) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+    monkeypatch.setattr(
+        api_server,
+        "transcribe_audio_file",
+        lambda path, config: {
+            "text": "alias endpoint",
+            "language": "en",
+            "segments": [],
+            "backend": "openai-whisper",
+            "model": "tiny",
+        },
+    )
+
+    response = client.get("/analysis/transcribe", params={"file": "sample.wav", "model_size": "tiny"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["text"] == "alias endpoint"
+    assert body["backend"] == "openai-whisper"
+
+
 def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch) -> None:
     wav_path = tmp_path / "sample.wav"
     _write_test_wav(wav_path)
@@ -129,6 +153,37 @@ def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch)
     assert body["file"] == "sample.wav"
     assert body["stress_score"] == 42
     assert body["features"]["pitch_variance_hz2"] == 320.0
+
+
+def test_analysis_stress_endpoint_alias_returns_score(tmp_path: Path, monkeypatch) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+    monkeypatch.setattr(
+        api_server,
+        "extract_stress_features",
+        lambda path: types.SimpleNamespace(
+            pitch_variance_hz2=123.0,
+            speech_rate_per_sec=0.4,
+            rms_energy=0.2,
+            voiced_ratio=0.6,
+        ),
+    )
+    monkeypatch.setattr(api_server, "score_stress", lambda features: 55)
+
+    response = client.get("/analysis/stress", params={"file": "sample.wav"})
+
+    assert response.status_code == 200
+    assert response.json()["stress_score"] == 55
+
+
+def test_stress_endpoint_returns_not_found_for_missing_file(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+
+    response = client.get("/stress", params={"file": "missing.wav"})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Audio file not found"
 
 
 def test_analysis_audio_endpoint_returns_pipeline_payload(tmp_path: Path, monkeypatch) -> None:
