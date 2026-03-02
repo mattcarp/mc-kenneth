@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kenneth Dashboard</title>
+    <title>Kenneth EPIC 4 Dashboard</title>
     <style>
       :root {
         --bg-0: #070a0e;
@@ -343,6 +343,16 @@
         color: var(--text-soft);
       }
 
+      .alert-audio {
+        margin-top: 8px;
+      }
+
+      .alert-audio audio {
+        width: 100%;
+        height: 28px;
+        filter: saturate(0.7) brightness(0.85);
+      }
+
       @media (min-width: 1020px) {
         .status-card {
           grid-column: span 12;
@@ -404,13 +414,7 @@
         <div class="control-panel">
           <button id="refreshNow" type="button">Refresh now</button>
           <label class="toggle"><input id="autoRefreshToggle" type="checkbox" checked /> Auto-refresh</label>
-          <select id="refreshInterval" aria-label="Refresh interval">
-            <option value="5000">5s</option>
-            <option value="10000" selected>10s</option>
-            <option value="15000">15s</option>
-            <option value="30000">30s</option>
-          </select>
-          <div class="badge" id="updatedAt">Booting dashboard...</div>
+          <div class="badge" id="updatedAt">Booting dashboard (10s cadence)...</div>
         </div>
       </div>
 
@@ -433,7 +437,7 @@
     </main>
 
     <script>
-      let refreshMs = 10000;
+      const refreshMs = 10000;
       let autoRefreshEnabled = true;
       let intervalHandle = null;
       let countdownHandle = null;
@@ -446,7 +450,6 @@
       const updatedAt = document.getElementById("updatedAt");
       const refreshNowBtn = document.getElementById("refreshNow");
       const autoRefreshToggle = document.getElementById("autoRefreshToggle");
-      const refreshIntervalSelect = document.getElementById("refreshInterval");
 
       function escapeHtml(value) {
         return String(value ?? "")
@@ -589,6 +592,14 @@
             const transcript = alert?.transcript ? escapeHtml(alert.transcript).slice(0, 135) : "No transcript available";
             const freq = alert?.frequency_mhz ? `${Number(alert.frequency_mhz).toFixed(3)} MHz` : "n/a";
             const signalType = escapeHtml(alert?.signal_type || "unknown");
+            const rawAudioUrl = alert?.audio_url || alert?.metadata?.audio_url;
+            const metadataFileName = alert?.metadata?.audio_file || alert?.metadata?.filename;
+            let audioSrc = "";
+            if (typeof rawAudioUrl === "string" && rawAudioUrl.trim()) {
+              audioSrc = rawAudioUrl.trim();
+            } else if (typeof metadataFileName === "string" && metadataFileName.trim()) {
+              audioSrc = `/api/audio/${encodeURIComponent(metadataFileName.trim())}`;
+            }
 
             return `
               <article class="alert-item ${escapeHtml(severity)}">
@@ -602,6 +613,11 @@
                   stressScore === null
                     ? '<div class="stress-text">Stress score unavailable</div>'
                     : `<div class="stress-bar"><div class="stress-fill" style="width:${stressScore}%"></div></div><div class="stress-text">Stress score: ${stressScore.toFixed(0)}/100</div>`
+                }
+                ${
+                  audioSrc
+                    ? `<div class="alert-audio"><audio controls preload="none" src="${escapeHtml(audioSrc)}"></audio></div>`
+                    : ""
                 }
               </article>
             `;
@@ -625,12 +641,12 @@
           return;
         }
         if (success) {
-          updatedAt.innerHTML = `${message} | <span class="countdown">next in ${Math.max(
+          updatedAt.innerHTML = `${message} | 10s cadence | <span class="countdown">next in ${Math.max(
             0,
             Math.ceil((nextRefreshAt - Date.now()) / 1000)
           )}s</span>`;
         } else {
-          updatedAt.textContent = `${message} | retry in ${Math.ceil(refreshMs / 1000)}s`;
+          updatedAt.textContent = `${message} | retry in 10s`;
         }
       }
 
@@ -687,12 +703,6 @@
       autoRefreshToggle.addEventListener("change", () => {
         autoRefreshEnabled = autoRefreshToggle.checked;
         scheduleRefreshTimer();
-      });
-
-      refreshIntervalSelect.addEventListener("change", () => {
-        refreshMs = Number(refreshIntervalSelect.value) || 10000;
-        scheduleRefreshTimer();
-        refresh();
       });
 
       refresh();

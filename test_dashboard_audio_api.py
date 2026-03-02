@@ -52,14 +52,58 @@ def test_transcribe_endpoint_returns_text(tmp_path: Path, monkeypatch) -> None:
     wav_path = tmp_path / "sample.wav"
     _write_test_wav(wav_path)
     monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
-    monkeypatch.setattr(api_server, "transcribe_audio", lambda path: "distress call")
 
-    response = client.get("/transcribe", params={"file": "sample.wav"})
+    def fake_transcribe(path, config):
+        assert path == wav_path
+        assert config.model_size == "tiny"
+        assert config.backend == "auto"
+        assert config.language == "en"
+        return {
+            "text": "distress call",
+            "language": "en",
+            "segments": [{"start": 0.0, "end": 0.8, "text": "distress call"}],
+            "backend": "faster-whisper",
+            "model": "tiny",
+        }
+
+    monkeypatch.setattr(api_server, "transcribe_audio_file", fake_transcribe)
+
+    response = client.get(
+        "/transcribe",
+        params={"file": "sample.wav", "model_size": "tiny", "backend": "auto", "language": "en"},
+    )
 
     assert response.status_code == 200
     body = response.json()
     assert body["file"] == "sample.wav"
     assert body["text"] == "distress call"
+    assert body["language"] == "en"
+    assert body["backend"] == "faster-whisper"
+    assert body["model"] == "tiny"
+    assert body["segments"][0]["text"] == "distress call"
+
+
+def test_transcribe_endpoint_returns_bad_request_for_invalid_backend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+
+    def fake_transcribe(path, config):
+        raise ValueError(
+            "Unsupported whisper backend 'broken'. Use one of: auto, faster-whisper, openai-whisper"
+        )
+
+    monkeypatch.setattr(api_server, "transcribe_audio_file", fake_transcribe)
+
+    response = client.get(
+        "/transcribe",
+        params={"file": "sample.wav", "backend": "broken"},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported whisper backend 'broken'" in response.json()["detail"]
 
 
 def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch) -> None:
