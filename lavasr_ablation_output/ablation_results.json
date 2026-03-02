@@ -1,0 +1,38 @@
+{
+  "generated_utc": "2026-03-02 02:04:02 UTC",
+  "python": "3.12.3",
+  "lavasr_available": false,
+  "install_note": "LavaSR executable/module not available in environment.",
+  "cases": [
+    {
+      "case_name": "synthetic_voice",
+      "input_sr": 8000,
+      "lavasr_ok": false,
+      "lavasr_cmd": null,
+      "lavasr_error": "cmd=/usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav --output /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr\ncmd=/usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav -o /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr\ncmd=/usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr",
+      "snr_before_db": 23.341201207152274,
+      "snr_after_db": null,
+      "lsd_before_db": 26.06177520751953,
+      "lsd_after_db": null
+    },
+    {
+      "case_name": "synthetic_voice",
+      "input_sr": 16000,
+      "lavasr_ok": false,
+      "lavasr_cmd": null,
+      "lavasr_error": "cmd=/usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav --output /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr\ncmd=/usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav -o /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr\ncmd=/usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr",
+      "snr_before_db": 24.453691479544105,
+      "snr_after_db": null,
+      "lsd_before_db": 20.556392669677734,
+      "lsd_after_db": null
+    }
+  ],
+  "averages": {
+    "snr_before_db": 23.89744634334819,
+    "snr_after_db": null,
+    "lsd_before_db": 23.309083938598633,
+    "lsd_after_db": null,
+    "snr_delta_db": null,
+    "lsd_delta_db": null
+  }
+}
