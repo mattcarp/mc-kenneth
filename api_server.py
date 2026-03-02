@@ -35,6 +35,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from api_maritime_aviation import add_maritime_aviation_routes
+from telegram_alerts import send_alert as send_telegram_alert
 
 # Initialize FastAPI with rich metadata
 app = FastAPI(
@@ -626,6 +627,39 @@ def _resolve_alert_language(payload: AlertCreate) -> Optional[str]:
     return None
 
 
+def _coerce_stress_percent(value: Any) -> Optional[float]:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        return None
+    if 0.0 <= score <= 1.0:
+        score *= 100.0
+    return max(0.0, min(100.0, score))
+
+
+def _extract_stress_score(payload: AlertCreate) -> Optional[float]:
+    metadata = payload.metadata or {}
+    candidates = [
+        metadata.get("stress_score"),
+        metadata.get("stress_level"),
+        metadata.get("stress"),
+        (metadata.get("emotions") or {}).get("stress_level"),
+    ]
+    for candidate in candidates:
+        score = _coerce_stress_percent(candidate)
+        if score is not None:
+            return score
+    return None
+
+
+def _transcription_preview(payload: AlertCreate) -> str:
+    source = payload.transcript or payload.description or payload.title
+    source = (source or "").strip()
+    if len(source) <= 220:
+        return source
+    return source[:217].rstrip() + "..."
+
+
 def _resolve_audio_file(filename: str) -> Optional[Path]:
     # Restrict resolution to basename-only lookups inside known audio dirs.
     candidate_name = Path(filename).name
@@ -1072,6 +1106,7 @@ async def create_alert(
     Distress signals are always promoted to critical severity.
     """
     is_distress = _is_distress_alert(payload)
+    stress_score = _extract_stress_score(payload)
     severity = payload.severity or AlertSeverity.WARNING
     if is_distress:
         severity = AlertSeverity.CRITICAL
@@ -1098,6 +1133,13 @@ async def create_alert(
         ALERTS.pop(0)
 
     background_tasks.add_task(_dispatch_alert_to_mission_control, record)
+    if stress_score is not None and stress_score > 70.0:
+        background_tasks.add_task(
+            send_telegram_alert,
+            "High-stress voice alert detected",
+            stress_score,
+            _transcription_preview(payload),
+        )
     await _broadcast_alert(record)
 
     return record

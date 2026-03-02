@@ -89,6 +89,38 @@ def test_analyze_audio_file_combines_transcription_stress_and_keywords(
     assert "distress" in result["threat_classification"]["matched_terms"]
 
 
+def test_analyze_audio_file_triggers_telegram_for_high_stress(
+    monkeypatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "analysis.wav"
+    _write_wav(path, _high_stress_signal())
+    sent = []
+
+    monkeypatch.setattr(
+        ai_analysis_pipeline,
+        "transcribe_audio_file",
+        lambda p, config: {"text": "Panic voice sample", "language": "en"},
+    )
+    monkeypatch.setattr(
+        ai_analysis_pipeline,
+        "send_telegram_alert",
+        lambda message, stress_score, transcription_preview: sent.append(
+            {
+                "message": message,
+                "stress_score": stress_score,
+                "transcription_preview": transcription_preview,
+            }
+        )
+        or True,
+    )
+
+    result = ai_analysis_pipeline.analyze_audio_file(path)
+
+    assert result["stress_score"] > ai_analysis_pipeline.HIGH_STRESS_THRESHOLD
+    assert len(sent) == 1
+    assert sent[0]["stress_score"] == result["stress_score"]
+
+
 def test_find_audio_files_filters_known_extensions(tmp_path: Path) -> None:
     (tmp_path / "a.wav").write_bytes(b"")
     (tmp_path / "b.mp3").write_bytes(b"")

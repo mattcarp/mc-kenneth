@@ -121,3 +121,36 @@ def test_dispatch_to_mission_control_conversation_and_kanban(monkeypatch) -> Non
     assert second["payload"]["channel"] == "kanban"
     assert second["headers"]["Authorization"] == "Bearer secret-token"
     assert second["timeout"] == 7
+
+
+def test_high_stress_alert_triggers_telegram_notification(monkeypatch) -> None:
+    sent = []
+
+    def fake_send_telegram_alert(message, stress_score, transcription_preview):
+        sent.append(
+            {
+                "message": message,
+                "stress_score": stress_score,
+                "transcription_preview": transcription_preview,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(
+        api_server, "send_telegram_alert", fake_send_telegram_alert
+    )
+
+    response = client.post(
+        "/alerts",
+        json={
+            "title": "Voice stress event",
+            "transcript": "Breathing heavy and speaking rapidly; requesting help.",
+            "metadata": {"stress_score": 83},
+            "source": "kenneth-sdr",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(sent) == 1
+    assert sent[0]["stress_score"] == 83
+    assert "Breathing heavy" in sent[0]["transcription_preview"]

@@ -13,6 +13,9 @@ import wave
 import numpy as np
 
 from whisper_transcription import WhisperConfig, transcribe_audio_file
+from telegram_alerts import send_alert as send_telegram_alert
+
+HIGH_STRESS_THRESHOLD = 70
 
 DEFAULT_FLAGGED_TERMS = (
     "mayday",
@@ -195,6 +198,12 @@ def analyze_audio_file(
     stress_features = extract_stress_features(path)
     stress_score = compute_stress_score(path)
     keyword_result = classify_threat_keywords(transcript_text, flagged_terms)
+    if stress_score > HIGH_STRESS_THRESHOLD:
+        send_telegram_alert(
+            "High-stress voice event from analysis pipeline",
+            stress_score,
+            transcript_text,
+        )
 
     return {
         "audio_file": str(path),
