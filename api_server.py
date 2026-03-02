@@ -35,7 +35,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from api_maritime_aviation import add_maritime_aviation_routes
-from telegram_alerts import send_alert as send_telegram_alert
+from alert_dispatcher import send_stress_alert
 from discord_alerts import send_alert as send_discord_alert
 from whisper_transcription import WhisperConfig, transcribe_audio_file
 from ai_analysis_pipeline import analyze_audio_file, extract_stress_features, score_stress
@@ -1299,11 +1299,13 @@ async def create_alert(
     background_tasks.add_task(_dispatch_alert_to_mission_control, record)
     if stress_score is not None and stress_score > 70.0:
         preview = _transcription_preview(payload)
+        indicators = payload.metadata or {}
         background_tasks.add_task(
-            send_telegram_alert,
-            "High-stress voice alert detected",
+            send_stress_alert,
             stress_score,
+            payload.frequency_hz or payload.frequency_mhz,
             preview,
+            indicators,
         )
         background_tasks.add_task(
             send_discord_alert,

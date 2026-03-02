@@ -126,26 +126,26 @@ def test_dispatch_to_mission_control_conversation_and_kanban(monkeypatch) -> Non
 def test_high_stress_alert_triggers_telegram_notification(monkeypatch) -> None:
     sent = []
 
-    def fake_send_telegram_alert(message, stress_score, transcription_preview):
+    def fake_send_stress_alert(stress_score, frequency, transcription, indicators):
         sent.append(
             {
-                "message": message,
                 "stress_score": stress_score,
-                "transcription_preview": transcription_preview,
+                "frequency": frequency,
+                "transcription": transcription,
+                "indicators": indicators,
             }
         )
         return True
 
-    monkeypatch.setattr(
-        api_server, "send_telegram_alert", fake_send_telegram_alert
-    )
+    monkeypatch.setattr(api_server, "send_stress_alert", fake_send_stress_alert)
 
     response = client.post(
         "/alerts",
         json={
             "title": "Voice stress event",
             "transcript": "Breathing heavy and speaking rapidly; requesting help.",
-            "metadata": {"stress_score": 83},
+            "metadata": {"stress_score": 83, "trigger": "rapid speech"},
+            "frequency_hz": 156800000,
             "source": "kenneth-sdr",
         },
     )
@@ -153,7 +153,9 @@ def test_high_stress_alert_triggers_telegram_notification(monkeypatch) -> None:
     assert response.status_code == 200
     assert len(sent) == 1
     assert sent[0]["stress_score"] == 83
-    assert "Breathing heavy" in sent[0]["transcription_preview"]
+    assert sent[0]["frequency"] == 156800000
+    assert "Breathing heavy" in sent[0]["transcription"]
+    assert sent[0]["indicators"]["trigger"] == "rapid speech"
 
 
 def test_high_stress_alert_triggers_discord_notification(monkeypatch) -> None:

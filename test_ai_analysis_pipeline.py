@@ -125,12 +125,13 @@ def test_analyze_audio_file_triggers_telegram_for_high_stress(
     )
     monkeypatch.setattr(
         ai_analysis_pipeline,
-        "send_telegram_alert",
-        lambda message, stress_score, transcription_preview: sent.append(
+        "send_stress_alert",
+        lambda stress_score, frequency, transcription, indicators: sent.append(
             {
-                "message": message,
                 "stress_score": stress_score,
-                "transcription_preview": transcription_preview,
+                "frequency": frequency,
+                "transcription": transcription,
+                "indicators": indicators,
             }
         )
         or True,
@@ -141,6 +142,8 @@ def test_analyze_audio_file_triggers_telegram_for_high_stress(
     assert result["stress_score"] > ai_analysis_pipeline.HIGH_STRESS_THRESHOLD
     assert len(sent) == 1
     assert sent[0]["stress_score"] == result["stress_score"]
+    assert sent[0]["frequency"] is None
+    assert "Panic voice sample" in sent[0]["transcription"]
 
 
 def test_find_audio_files_filters_known_extensions(tmp_path: Path) -> None:
