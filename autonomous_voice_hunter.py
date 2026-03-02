@@ -161,6 +161,8 @@ class AutonomousVoiceHunter:
         self.extended_capture_duration = 60  # Extended capture when voice found
         self.voice_threshold = 0.12       # Voice detection sensitivity
         self.lock_extension_time = 30     # Extra time to stay locked after voice stops
+        self.noise_gate_db = float(os.getenv("NOISE_GATE_DB", "-40"))
+        self.noise_gate_rms = 10 ** (self.noise_gate_db / 20.0)
         
         # Scanning parameters
         self.max_runtime_hours = 12       # Maximum runtime
@@ -190,6 +192,9 @@ class AutonomousVoiceHunter:
         self.logger.info(f"Session: {session_name}")
         self.logger.info(f"Maritime frequencies: {len(self.maritime_frequencies)}")
         self.logger.info(f"Aviation frequencies: {len(self.aviation_frequencies)}")
+        self.logger.info(
+            f"Noise gate threshold: {self.noise_gate_db:.1f} dBFS (RMS {self.noise_gate_rms:.6f})"
+        )
         
     def setup_logging(self):
         """Setup comprehensive logging"""
@@ -436,6 +441,23 @@ class AutonomousVoiceHunter:
         has_voice = voice_score > self.voice_threshold
         
         return has_voice, voice_score
+
+    def _passes_noise_gate(self, audio_data):
+        """Check whether sample RMS is above noise gate threshold."""
+        samples = np.asarray(audio_data)
+        if samples.size == 0:
+            return False, float("-inf"), 0.0
+
+        if np.issubdtype(samples.dtype, np.integer):
+            dtype_info = np.iinfo(samples.dtype)
+            max_abs = max(abs(dtype_info.min), dtype_info.max)
+            samples = samples.astype(np.float32) / float(max_abs)
+        else:
+            samples = samples.astype(np.float32)
+
+        rms = float(np.sqrt(np.mean(np.square(samples), dtype=np.float64)))
+        rms_dbfs = 20.0 * np.log10(max(rms, 1e-12))
+        return rms >= self.noise_gate_rms, rms_dbfs, rms
     
     def scan_frequency(self, freq_name, frequency_hz):
         """Scan single frequency for voice activity"""
@@ -495,7 +517,15 @@ class AutonomousVoiceHunter:
             timestamp_str = start_time.strftime("%Y%m%d_%H%M%S")
             filename = f"VOICE_CAPTURE_{freq_name}_{freq_mhz:.3f}MHz_{timestamp_str}.wav"
             filepath = self.session_dir / filename
-            
+
+            passes_gate, rms_dbfs, rms = self._passes_noise_gate(extended_audio)
+            if not passes_gate:
+                self.logger.info(
+                    "   🚫 Discarded capture below noise gate "
+                    f"(rms={rms:.6f}, {rms_dbfs:.1f} dBFS < {self.noise_gate_db:.1f} dBFS)"
+                )
+                return None, 0
+
             sf.write(filepath, extended_audio, sample_rate)
             
             # Track statistics
@@ -555,17 +585,27 @@ class AutonomousVoiceHunter:
             
             if has_voice:
                 self.logger.info(f"   🎙️  Continued voice activity detected (score: {voice_score:.3f})")
-                consecutive_quiet_periods = 0
-                additional_time += 10
-                
-                # Save additional capture
-                timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                additional_filename = f"VOICE_CONTINUED_{freq_name}_{frequency_hz/1e6:.3f}MHz_{timestamp_str}.wav"
-                additional_filepath = self.session_dir / additional_filename
-                sf.write(additional_filepath, monitor_sample, sample_rate)
-                
-                self.logger.info(f"   📁 Additional capture: {additional_filename}")
-                self._auto_transcribe_capture(additional_filepath, freq_name, frequency_hz)
+                passes_gate, rms_dbfs, rms = self._passes_noise_gate(monitor_sample)
+                if passes_gate:
+                    consecutive_quiet_periods = 0
+                    additional_time += 10
+
+                    # Save additional capture
+                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    additional_filename = f"VOICE_CONTINUED_{freq_name}_{frequency_hz/1e6:.3f}MHz_{timestamp_str}.wav"
+                    additional_filepath = self.session_dir / additional_filename
+                    sf.write(additional_filepath, monitor_sample, sample_rate)
+
+                    self.logger.info(f"   📁 Additional capture: {additional_filename}")
+                    self._auto_transcribe_capture(additional_filepath, freq_name, frequency_hz)
+                else:
+                    consecutive_quiet_periods += 1
+                    additional_time += 10
+                    self.logger.info(
+                        "   🚫 Continued sample discarded below noise gate "
+                        f"(rms={rms:.6f}, {rms_dbfs:.1f} dBFS < {self.noise_gate_db:.1f} dBFS)"
+                    )
+                    self.logger.info(f"   📊 Quiet period {consecutive_quiet_periods}/{max_quiet_periods}")
                 
             else:
                 consecutive_quiet_periods += 1

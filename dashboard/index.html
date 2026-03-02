@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kenneth Dashboard</title>
+    <style>
+      :root {
+        --bg: #0a0a0a;
+        --zinc-900: #18181b;
+        --zinc-800: #27272a;
+        --zinc-700: #3f3f46;
+        --zinc-500: #71717a;
+        --zinc-300: #d4d4d8;
+        --zinc-100: #f4f4f5;
+        --green: #22c55e;
+        --amber: #f59e0b;
+        --red: #ef4444;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top right, #1f1f22 0%, var(--bg) 45%), var(--bg);
+        color: var(--zinc-100);
+        font-family: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      }
+
+      .wrap {
+        width: min(1200px, 94vw);
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--zinc-300);
+      }
+
+      .badge {
+        border: 1px solid var(--zinc-700);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+        color: var(--zinc-300);
+        background: rgba(39, 39, 42, 0.6);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 14px;
+      }
+
+      .card {
+        grid-column: span 12;
+        background: linear-gradient(180deg, rgba(39, 39, 42, 0.55), rgba(24, 24, 27, 0.85));
+        border: 1px solid var(--zinc-800);
+        border-radius: 12px;
+        padding: 14px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 0.9rem;
+        color: var(--zinc-300);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .metric {
+        background: rgba(24, 24, 27, 0.8);
+        border: 1px solid var(--zinc-800);
+        border-radius: 10px;
+        padding: 10px;
+      }
+
+      .metric .label {
+        color: var(--zinc-500);
+        font-size: 0.72rem;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+      }
+
+      .metric .value {
+        font-size: 1.02rem;
+        color: var(--zinc-100);
+      }
+
+      .ok { color: var(--green); }
+      .warn { color: var(--amber); }
+      .bad { color: var(--red); }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      th,
+      td {
+        text-align: left;
+        padding: 8px 6px;
+        border-bottom: 1px solid var(--zinc-800);
+      }
+
+      th {
+        color: var(--zinc-500);
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 0.72rem;
+      }
+
+      .muted {
+        color: var(--zinc-500);
+      }
+
+      .empty {
+        color: var(--zinc-500);
+        font-size: 0.85rem;
+        padding: 8px 0;
+      }
+
+      @media (min-width: 980px) {
+        .status-card {
+          grid-column: span 12;
+        }
+
+        .captures-card {
+          grid-column: span 7;
+        }
+
+        .alerts-card {
+          grid-column: span 5;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .status-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <div class="topbar">
+        <h1>Kenneth Signal Dashboard</h1>
+        <div class="badge" id="updatedAt">Updating...</div>
+      </div>
+
+      <section class="grid">
+        <article class="card status-card">
+          <h2>System Status</h2>
+          <div class="status-grid" id="statusMetrics"></div>
+        </article>
+
+        <article class="card captures-card">
+          <h2>Signal Captures</h2>
+          <div id="capturesContent" class="empty">Loading captures...</div>
+        </article>
+
+        <article class="card alerts-card">
+          <h2>Stress Alerts</h2>
+          <div id="alertsContent" class="empty">Loading alerts...</div>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const statusMetrics = document.getElementById("statusMetrics");
+      const capturesContent = document.getElementById("capturesContent");
+      const alertsContent = document.getElementById("alertsContent");
+      const updatedAt = document.getElementById("updatedAt");
+
+      function fmtDate(iso) {
+        if (!iso) return "-";
+        const dt = new Date(iso);
+        return dt.toLocaleString();
+      }
+
+      function renderStatus(health) {
+        const hackrfClass =
+          health.hackrf_status === "connected" ? "ok" : health.hackrf_status === "unknown" ? "warn" : "bad";
+
+        statusMetrics.innerHTML = `
+          <div class="metric">
+            <div class="label">API</div>
+            <div class="value ok">${health.status || "unknown"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">HackRF</div>
+            <div class="value ${hackrfClass}">${health.hackrf_status || "unknown"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Captures</div>
+            <div class="value">${health.captures_count ?? 0}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Stress Alerts</div>
+            <div class="value">${health.stress_alerts_count ?? 0}</div>
+          </div>
+        `;
+      }
+
+      function renderCaptures(captures) {
+        if (!Array.isArray(captures) || captures.length === 0) {
+          capturesContent.innerHTML = '<div class="empty">No captures yet.</div>';
+          return;
+        }
+
+        const rows = captures
+          .slice(0, 15)
+          .map(
+            (c) => `
+            <tr>
+              <td>${fmtDate(c.created_at)}</td>
+              <td>${Number(c.frequency_mhz || 0).toFixed(3)}</td>
+              <td>${Number(c.duration_sec || 0).toFixed(1)}s</td>
+              <td>${Number(c.average_power_dbfs || 0).toFixed(2)}</td>
+            </tr>
+          `
+          )
+          .join("");
+
+        capturesContent.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>MHz</th>
+                <th>Duration</th>
+                <th>Power dBFS</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      function renderStressAlerts(alerts) {
+        if (!Array.isArray(alerts) || alerts.length === 0) {
+          alertsContent.innerHTML = '<div class="empty">No stress alerts.</div>';
+          return;
+        }
+
+        const rows = alerts
+          .slice(0, 12)
+          .map((a) => {
+            const freq = a.frequency_mhz ? `${Number(a.frequency_mhz).toFixed(3)} MHz` : "n/a";
+            const sevClass = a.severity === "critical" ? "bad" : a.severity === "warning" ? "warn" : "ok";
+            return `
+              <tr>
+                <td>${fmtDate(a.created_at)}</td>
+                <td class="${sevClass}">${a.severity || "unknown"}</td>
+                <td>${a.title || "untitled"}</td>
+                <td class="muted">${freq}</td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        alertsContent.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Severity</th>
+                <th>Alert</th>
+                <th>Freq</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      async function fetchJson(path) {
+        const response = await fetch(path, { headers: { Accept: "application/json" } });
+        if (!response.ok) {
+          throw new Error(`${path} -> ${response.status}`);
+        }
+        return response.json();
+      }
+
+      async function refresh() {
+        try {
+          const [health, captures, alerts] = await Promise.all([
+            fetchJson("/health"),
+            fetchJson("/captures?limit=50"),
+            fetchJson("/stress-alerts?limit=50"),
+          ]);
+
+          renderStatus(health);
+          renderCaptures(captures);
+          renderStressAlerts(alerts);
+          updatedAt.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+          statusMetrics.innerHTML = '<div class="metric"><div class="label">Status</div><div class="value bad">API unreachable</div></div>';
+          capturesContent.innerHTML = `<div class="empty">Error loading captures: ${err.message}</div>`;
+          alertsContent.innerHTML = `<div class="empty">Error loading alerts: ${err.message}</div>`;
+          updatedAt.textContent = "Update failed";
+        }
+      }
+
+      refresh();
+      setInterval(refresh, 10000);
+    </script>
+  </body>
+</html>

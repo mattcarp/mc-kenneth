@@ -297,9 +297,25 @@ class AlertRecord(BaseModel):
     source: str
 
 
+class CaptureRecord(BaseModel):
+    """Persisted capture record for dashboard display."""
+
+    id: str
+    created_at: datetime
+    file_path: str
+    frequency_mhz: float
+    duration_sec: float
+    file_size_mb: float
+    average_power_dbfs: float
+    sample_rate_msps: float
+    status: str = "success"
+
+
 ALERTS: List[AlertRecord] = []
 ALERT_CLIENTS: List[WebSocket] = []
 MAX_ALERTS = 500
+CAPTURES: List[CaptureRecord] = []
+MAX_CAPTURES = 500
 DISTRESS_KEYWORDS = {
     "mayday",
     "pan-pan",
@@ -364,6 +380,32 @@ def _is_distress_alert(payload: AlertCreate) -> bool:
         filter(None, [payload.title, payload.description, payload.transcript])
     ).lower()
     return any(keyword in text for keyword in DISTRESS_KEYWORDS)
+
+
+def _is_stress_alert(alert: AlertRecord) -> bool:
+    stress_terms = {
+        "stress",
+        "panic",
+        "distress",
+        "anxiety",
+        "urgent",
+        "help",
+        "mayday",
+        "sos",
+    }
+    haystack = " ".join(
+        [
+            alert.title or "",
+            alert.description or "",
+            alert.transcript or "",
+            " ".join(alert.tags or []),
+        ]
+    ).lower()
+    if alert.signal_type == SignalType.DISTRESS:
+        return True
+    if alert.severity == AlertSeverity.CRITICAL:
+        return True
+    return any(term in haystack for term in stress_terms)
 
 
 def _estimate_gender_and_age(
@@ -707,7 +749,7 @@ async def capture_signal(request: CaptureRequest, background_tasks: BackgroundTa
             iq = np.frombuffer(raw, dtype=np.int8).astype(np.float32) / 128.0
             power_dbfs = 20 * np.log10(np.mean(np.abs(iq)) + 1e-10)
 
-        return {
+        capture_result = {
             "status": "success",
             "file_path": output_file,
             "frequency_mhz": request.frequency / 1e6,
@@ -716,6 +758,17 @@ async def capture_signal(request: CaptureRequest, background_tasks: BackgroundTa
             "average_power_dbfs": float(power_dbfs),
             "sample_rate_msps": request.sample_rate / 1e6,
         }
+        CAPTURES.append(
+            CaptureRecord(
+                id=str(uuid.uuid4()),
+                created_at=datetime.now(),
+                **capture_result,
+            )
+        )
+        if len(CAPTURES) > MAX_CAPTURES:
+            CAPTURES.pop(0)
+
+        return capture_result
 
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=500, detail="Capture timeout")
@@ -1065,6 +1118,19 @@ async def get_alert(alert_id: str):
     raise HTTPException(status_code=404, detail="Alert not found")
 
 
+@app.get("/captures", tags=["capture"], response_model=List[CaptureRecord])
+async def list_captures(limit: int = Query(100, ge=1, le=500)):
+    """List recent signal captures for dashboard usage."""
+    return list(reversed(CAPTURES[-limit:]))
+
+
+@app.get("/stress-alerts", tags=["alerts"], response_model=List[AlertRecord])
+async def list_stress_alerts(limit: int = Query(100, ge=1, le=500)):
+    """List recent stress/distress alerts for dashboard triage."""
+    stress_alerts = [alert for alert in ALERTS if _is_stress_alert(alert)]
+    return list(reversed(stress_alerts[-limit:]))
+
+
 @app.get("/api/audio/{filename}", tags=["alerts"])
 async def get_audio_clip(filename: str):
     """
@@ -1362,13 +1428,31 @@ async def system_status():
     }
 
 
+@app.get("/health", tags=["system"])
+async def health():
+    """Lightweight health endpoint for dashboard polling."""
+    status = await system_status()
+    return {
+        "status": "ok",
+        "api_version": "2.0.0",
+        "timestamp": datetime.now(),
+        "hackrf_status": status.get("hackrf_status", "unknown"),
+        "alerts_count": len(ALERTS),
+        "stress_alerts_count": len([alert for alert in ALERTS if _is_stress_alert(alert)]),
+        "captures_count": len(CAPTURES),
+    }
+
+
 # ==================== ROOT REDIRECT ====================
 
 
 @app.get("/", include_in_schema=False)
 async def root():
-    """Redirect to interactive API docs."""
-    return {"message": "Welcome to RF SIGINT API", "docs": "/docs", "redoc": "/redoc"}
+    """Serve Kenneth dashboard."""
+    dashboard_path = Path(__file__).resolve().parent / "dashboard" / "index.html"
+    if dashboard_path.exists():
+        return FileResponse(str(dashboard_path), media_type="text/html")
+    raise HTTPException(status_code=404, detail="Dashboard not found")
 
 
 # Add maritime and aviation routes

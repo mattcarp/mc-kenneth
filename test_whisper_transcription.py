@@ -1,6 +1,7 @@
 import sys
 import types
 import wave
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -161,3 +162,44 @@ def test_transcribe_audio_file_probes_priority_languages_when_auto_is_uncertain(
     assert calls == [None, "mt", "ar", "it", "en"]
     assert result["language"] == "ar"
     assert result["text"] == "ar result"
+
+
+def test_extended_capture_discards_noise_only_samples_before_write(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NOISE_GATE_DB", "-20")
+    hunter = autonomous_voice_hunter.AutonomousVoiceHunter(session_name="test-session")
+
+    low_energy_audio = np.full(48_000, 0.01, dtype=np.float32)
+    monkeypatch.setattr(
+        hunter,
+        "create_rf_sample",
+        lambda frequency_hz, duration: (low_energy_audio, True),
+    )
+
+    write_calls = []
+    monkeypatch.setattr(
+        autonomous_voice_hunter.sf,
+        "write",
+        lambda *args, **kwargs: write_calls.append((args, kwargs)),
+    )
+
+    monitor_calls = []
+    monkeypatch.setattr(
+        hunter,
+        "monitor_for_continued_activity",
+        lambda *args, **kwargs: monitor_calls.append((args, kwargs)) or 0,
+    )
+
+    capture_path, capture_duration = hunter.extended_voice_capture(
+        "CH16", 156_800_000.0, datetime.now()
+    )
+
+    assert hunter.noise_gate_db == -20.0
+    assert capture_path is None
+    assert capture_duration == 0
+    assert write_calls == []
+    assert monitor_calls == []
+    assert hunter.stats["captures_saved"] == 0
+    assert hunter.voice_captures == []
