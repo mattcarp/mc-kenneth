@@ -79,6 +79,7 @@ class RealAutonomousVoiceHunter:
         # RF parameters
         self.sample_rate = 2000000  # 2 MSPS for RTL-SDR
         self.audio_sample_rate = 48000
+        self.demod_audio_sample_rate = 16000
         
         # Voice detection settings
         self.voice_threshold = 0.08  # Voice detection threshold (8%)
@@ -122,6 +123,42 @@ class RealAutonomousVoiceHunter:
         except Exception as exc:
             self.logger.warning(f"   ⚠️  Transcription failed for {frequency_name}: {exc}")
         return None
+
+    def _select_demod_mode(self, frequency_hz):
+        """Select demodulator from operating band."""
+        freq_mhz = frequency_hz / 1e6
+        if 108.0 <= freq_mhz <= 137.0:
+            return "am"
+        if 156.0 <= freq_mhz <= 162.0:
+            return "nfm"
+        return "fm"
+
+    def _resample_to_16k(self, audio):
+        if audio is None or len(audio) == 0:
+            return np.array([], dtype=np.float32)
+        if self.sample_rate == self.demod_audio_sample_rate:
+            return audio.astype(np.float32)
+        resampled = signal.resample_poly(audio, self.demod_audio_sample_rate, self.sample_rate)
+        return resampled.astype(np.float32)
+
+    def _am_demodulate(self, iq_samples):
+        envelope = np.abs(iq_samples)
+        audio = envelope - np.mean(envelope)
+        return self._resample_to_16k(audio)
+
+    def _nfm_demodulate(self, iq_samples):
+        if len(iq_samples) < 2:
+            return np.array([], dtype=np.float32)
+        iq_norm = iq_samples / (np.abs(iq_samples) + 1e-12)
+        audio = np.angle(iq_norm[1:] * np.conj(iq_norm[:-1]))
+        return self._resample_to_16k(audio)
+
+    def _fm_demodulate(self, iq_samples):
+        if len(iq_samples) < 2:
+            return np.array([], dtype=np.float32)
+        phase = np.unwrap(np.angle(iq_samples))
+        audio = np.diff(phase)
+        return self._resample_to_16k(audio)
         
     def attempt_real_rf_capture(self, frequency_name, frequency_hz, duration):
         """YOLO real RF capture from SDRplay/RTL-SDR"""
@@ -157,19 +194,14 @@ class RealAutonomousVoiceHunter:
                     i_samples = iq_samples[::2].astype(float) - 127.5
                     q_samples = iq_samples[1::2].astype(float) - 127.5
                     iq_complex = i_samples + 1j * q_samples
-                    
-                    # Aviation (108-137 MHz) uses AM; maritime VHF is narrowband FM.
-                    if 108e6 <= frequency_hz <= 137e6:
-                        audio_demod = np.abs(iq_complex)
-                        audio_demod = audio_demod - np.mean(audio_demod)
+
+                    demod_mode = self._select_demod_mode(frequency_hz)
+                    if demod_mode == "am":
+                        audio_demod = self._am_demodulate(iq_complex)
+                    elif demod_mode == "nfm":
+                        audio_demod = self._nfm_demodulate(iq_complex)
                     else:
-                        phase = np.unwrap(np.angle(iq_complex))
-                        audio_demod = np.diff(phase)
-                    
-                    # Decimate to audio rate
-                    decimation = self.sample_rate // self.audio_sample_rate
-                    if decimation > 1:
-                        audio_demod = audio_demod[::decimation]
+                        audio_demod = self._fm_demodulate(iq_complex)
                     
                     # Audio processing for voice extraction
                     if len(audio_demod) > 0:
@@ -187,12 +219,14 @@ class RealAutonomousVoiceHunter:
                         
                         # Save real RF audio
                         audio_file = self.session_dir / f"REAL_RF_{frequency_name.replace(' ', '_')}_{timestamp}.wav"
-                        sf.write(str(audio_file), audio_demod, self.audio_sample_rate)
+                        sf.write(str(audio_file), audio_demod, self.demod_audio_sample_rate)
                         
                         # Clean up IQ file
                         os.unlink(iq_file)
                         
-                        self.logger.info(f"🎉 REAL RF AUDIO: {audio_file.name}")
+                        self.logger.info(
+                            f"🎉 REAL RF AUDIO: {audio_file.name} (demod={demod_mode}, sr={self.demod_audio_sample_rate})"
+                        )
                         return str(audio_file)
             else:
                 if Path(iq_file).exists():
