@@ -159,7 +159,10 @@ class AutonomousVoiceHunter:
         # Voice detection parameters
         self.quick_sample_duration = 8    # Quick samples to detect voice
         self.extended_capture_duration = 60  # Extended capture when voice found
-        self.voice_threshold = 0.12       # Voice detection sensitivity
+        self.voice_threshold = 0.08       # Voice detection sensitivity
+        # Aviation AM voice often has less concentrated 300-3400 Hz energy than FM/NFM,
+        # so a lower ratio floor reduces false rejections on valid ATC/pilot comms.
+        self.voice_ratio_threshold = float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08"))
         self.lock_extension_time = 30     # Extra time to stay locked after voice stops
         self.noise_gate_db = float(os.getenv("NOISE_GATE_DB", "-40"))
         self.noise_gate_rms = 10 ** (self.noise_gate_db / 20.0)
@@ -399,11 +402,20 @@ class AutonomousVoiceHunter:
         
         return pattern
         
-    def detect_voice_activity(self, audio_data, sample_rate):
+    def _voice_ratio_threshold_for_frequency(self, frequency_hz):
+        """Return ratio threshold, with a lower floor for aviation AM channels."""
+        if frequency_hz is None:
+            return self.voice_ratio_threshold
+        freq_mhz = frequency_hz / 1e6
+        if 108.0 <= freq_mhz <= 137.0:
+            return min(self.voice_ratio_threshold, 0.08)
+        return self.voice_ratio_threshold
+
+    def detect_voice_activity(self, audio_data, sample_rate, frequency_hz=None):
         """Advanced voice activity detection"""
         
         if len(audio_data) < 1000:
-            return False, 0.0
+            return False, 0.0, 0.0, self._voice_ratio_threshold_for_frequency(frequency_hz)
             
         # Multiple voice detection metrics
         
@@ -438,9 +450,10 @@ class AutonomousVoiceHunter:
         # Combined voice score
         voice_score = (rms * 1.5 + voice_ratio * 2.5 + modulation_depth * 1.0 + zcr_score * 0.5) / 5.5
         
-        has_voice = voice_score > self.voice_threshold
+        ratio_threshold = self._voice_ratio_threshold_for_frequency(frequency_hz)
+        has_voice = voice_score > self.voice_threshold or voice_ratio >= ratio_threshold
         
-        return has_voice, voice_score
+        return has_voice, voice_score, voice_ratio, ratio_threshold
 
     def _passes_noise_gate(self, audio_data):
         """Check whether sample RMS is above noise gate threshold."""
@@ -476,11 +489,14 @@ class AutonomousVoiceHunter:
             sample_rate = 48000
             
             # Analyze for voice activity
-            has_voice, voice_score = self.detect_voice_activity(audio_sample, sample_rate)
+            has_voice, voice_score, voice_ratio, ratio_threshold = self.detect_voice_activity(
+                audio_sample, sample_rate, frequency_hz
+            )
             
             self.stats['frequencies_scanned'] += 1
             
             self.logger.info(f"   Voice Score: {voice_score:.3f} (threshold: {self.voice_threshold})")
+            self.logger.info(f"   Voice Ratio: {voice_ratio:.3f} (threshold: {ratio_threshold:.3f})")
             
             if has_voice:
                 self.logger.info(f"   ✅ HUMAN SPEECH DETECTED!")

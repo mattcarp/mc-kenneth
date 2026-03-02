@@ -83,7 +83,10 @@ class RealAutonomousVoiceHunter:
         self.demod_audio_sample_rate = 16000
         
         # Voice detection settings
-        self.voice_threshold = 0.08  # Voice detection threshold (8%)
+        self.voice_threshold = 0.08  # Combined voice score threshold
+        # Aviation AM speech can spread energy outside FM-leaning voice features,
+        # so we use a lower voice-band ratio floor to avoid false negatives.
+        self.voice_ratio_threshold = float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08"))
         self.lock_duration = 60  # Lock for 60 seconds when voice detected
         
         # Statistics
@@ -414,14 +417,22 @@ class RealAutonomousVoiceHunter:
         
         return white_noise + atmospheric + equipment + fading
     
-    def detect_voice_activity(self, audio_signal, sample_rate):
+    def _voice_ratio_threshold_for_frequency(self, frequency_hz):
+        """Return ratio threshold, with an aviation-specific lower floor."""
+        freq_mhz = frequency_hz / 1e6
+        if 108.0 <= freq_mhz <= 137.0:
+            return min(self.voice_ratio_threshold, 0.08)
+        return self.voice_ratio_threshold
+
+    def detect_voice_activity(self, audio_signal, sample_rate, frequency_hz):
         """Detect voice activity in audio signal"""
         
         if len(audio_signal) == 0:
-            return 0.0
+            return 0.0, 0.0, self._voice_ratio_threshold_for_frequency(frequency_hz)
             
         # RMS energy
         rms = np.sqrt(np.mean(audio_signal**2))
+        voice_ratio = 0.0
         
         # Spectral analysis for voice characteristics
         if len(audio_signal) > 1024:
@@ -433,16 +444,19 @@ class RealAutonomousVoiceHunter:
             
             # Total energy
             total_energy = np.mean(psd)
+            if total_energy > 0:
+                voice_ratio = voice_energy / total_energy
             
             # Voice activity score (combination of RMS and spectral characteristics)
             if total_energy > 0:
-                voice_score = (rms * 2 + voice_energy / total_energy) / 3
+                voice_score = (rms * 2 + voice_ratio) / 3
             else:
                 voice_score = rms
         else:
             voice_score = rms
             
-        return voice_score
+        ratio_threshold = self._voice_ratio_threshold_for_frequency(frequency_hz)
+        return voice_score, voice_ratio, ratio_threshold
     
     def scan_frequency(self, frequency_name, frequency_hz, duration=5):
         """Scan a single frequency for voice activity"""
@@ -472,11 +486,14 @@ class RealAutonomousVoiceHunter:
             source_type = "SIMULATION"
         
         # Detect voice activity
-        voice_score = self.detect_voice_activity(audio_signal, detected_sample_rate)
+        voice_score, voice_ratio, ratio_threshold = self.detect_voice_activity(
+            audio_signal, detected_sample_rate, frequency_hz
+        )
         
         self.logger.info(f"   Voice Score: {voice_score:.3f} (threshold: {self.voice_threshold})")
+        self.logger.info(f"   Voice Ratio: {voice_ratio:.3f} (threshold: {ratio_threshold:.3f})")
         
-        if voice_score > self.voice_threshold:
+        if voice_score > self.voice_threshold or voice_ratio >= ratio_threshold:
             self.voice_detections += 1
             self.captures_saved += 1
             self.logger.info(f"   ✅ HUMAN SPEECH DETECTED! ({source_type})")
