@@ -154,3 +154,34 @@ def test_high_stress_alert_triggers_telegram_notification(monkeypatch) -> None:
     assert len(sent) == 1
     assert sent[0]["stress_score"] == 83
     assert "Breathing heavy" in sent[0]["transcription_preview"]
+
+
+def test_high_stress_alert_triggers_discord_notification(monkeypatch) -> None:
+    sent = []
+
+    def fake_send_discord_alert(message, stress_score, transcription_preview):
+        sent.append(
+            {
+                "message": message,
+                "stress_score": stress_score,
+                "transcription_preview": transcription_preview,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(api_server, "send_discord_alert", fake_send_discord_alert)
+
+    response = client.post(
+        "/alerts",
+        json={
+            "title": "Voice stress event",
+            "transcript": "Caller is panicking and breathing heavily near harbor.",
+            "metadata": {"stress_score": 84},
+            "source": "kenneth-sdr",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(sent) == 1
+    assert sent[0]["stress_score"] == 84
+    assert "panicking and breathing heavily" in sent[0]["transcription_preview"]
