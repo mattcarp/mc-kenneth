@@ -1,0 +1,67 @@
+{
+  "generated": "2026-03-02T04:52:31.767567",
+  "verdict": "SIGNAL_CHANGED",
+  "recommendation": "LavaSR modifies spectrum significantly \u2014 needs Whisper comparison on real SDR captures (not post-processed MP3s)",
+  "results": [
+    {
+      "file": "net_fm_after.mp3",
+      "duration_s": 5.04,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 2.9645,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    },
+    {
+      "file": "net_fm_after_PROPER.mp3",
+      "duration_s": 5.04,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 2.9645,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    },
+    {
+      "file": "one_radio_after.mp3",
+      "duration_s": 10.03,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 2.8038,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    },
+    {
+      "file": "one_radio_before.mp3",
+      "duration_s": 10.03,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 1.8394,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    },
+    {
+      "file": "radio_malta_after.mp3",
+      "duration_s": 5.04,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 3.2112,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    },
+    {
+      "file": "radio_malta_after_PROPER.mp3",
+      "duration_s": 5.04,
+      "lavasr_ran": true,
+      "lsd_naive_vs_enhanced": 3.2112,
+      "transcript_before": "",
+      "transcript_after": "",
+      "words_before": 0,
+      "words_after": 0
+    }
+  ]
+}

@@ -1,51 +1,53 @@
 # LavaSR v2 Ablation Results
 
-Generated: 2026-03-02 02:04:02 UTC
+Generated: 2026-03-02 04:52:31 UTC  
+Device: cpu | LavaSR 0.0.2
 
-## Setup
+## Verdict: SIGNAL_CHANGED
 
-- Test inputs: synthetic voice-like audio, downsampled to 8 kHz and 16 kHz
-- Target output: 48 kHz
-- Baseline: linear interpolation upsample
-- Metrics: SNR (dB, higher is better), LSD (dB, lower is better)
-- LavaSR status: unavailable
+**Recommendation:** LavaSR modifies spectrum significantly — needs Whisper comparison on real SDR captures (not post-processed MP3s)
 
 ## Results
 
-| Case | Input SR | LavaSR ran | SNR before | SNR after | LSD before | LSD after |
-|---|---:|---|---:|---:|---:|---:|
-| synthetic_voice | 8000 | False | 23.341 | N/A | 26.062 | N/A |
-| synthetic_voice | 16000 | False | 24.454 | N/A | 20.556 | N/A |
+| File | Duration | LavaSR | LSD | Words before | Words after |
+|------|:---:|:---:|:---:|:---:|:---:|
+| net_fm_after.mp3 | 5.04s | ✅ | 2.9645 | 0 | 0 |
+| net_fm_after_PROPER.mp3 | 5.04s | ✅ | 2.9645 | 0 | 0 |
+| one_radio_after.mp3 | 10.03s | ✅ | 2.8038 | 0 | 0 |
+| one_radio_before.mp3 | 10.03s | ✅ | 1.8394 | 0 | 0 |
+| radio_malta_after.mp3 | 5.04s | ✅ | 3.2112 | 0 | 0 |
+| radio_malta_after_PROPER.mp3 | 5.04s | ✅ | 3.2112 | 0 | 0 |
 
-## Aggregate
+## Transcription Samples (Whisper tiny)
 
-- Average SNR before: 23.897 dB
-- Average SNR after: N/A dB
-- Average SNR delta: N/A dB
-- Average LSD before: 23.309 dB
-- Average LSD after: N/A dB
-- Average LSD delta: N/A dB
+**net_fm_after.mp3**
+- Before: (silent)
+- After:  (silent)
 
-## Notes
+**net_fm_after_PROPER.mp3**
+- Before: (silent)
+- After:  (silent)
 
-- LavaSR install/runtime is blocked in this environment; CLI calls failed for all tested invocation patterns.
-- For production enhancement workloads, GPU inference is recommended; CPU-only runs can be too slow for real-time or batch throughput targets.
-- Install command attempted: `pip install "torch>=2.2" lavasr`.
+**one_radio_after.mp3**
+- Before: (silent)
+- After:  (silent)
 
-### LavaSR error logs
+**one_radio_before.mp3**
+- Before: (silent)
+- After:  (silent)
 
-#### synthetic_voice @ 8000 Hz
+## Methodology
 
-```text
-cmd=/usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav --output /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-cmd=/usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav -o /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-cmd=/usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_input.wav /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_8000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-```
+- Audio source: Kenneth/audio_samples (real radio MP3s — post-processed ElevenLabs denoise tests)
+- Before: librosa load at 16kHz → resample to 48kHz (naive baseline)
+- After: same 16kHz input → LavaSR enhance (denoise=True, enhance=True) → 48kHz
+- LSD: Log-Spectral Distance between naive and LavaSR output
+- Whisper tiny word count as proxy for intelligibility
+- Note: audio_samples are already processed (ElevenLabs denoised) — real ablation value
+  will be higher on raw SDR captures; recommend re-test with raw .raw/.wav SDR files
 
-#### synthetic_voice @ 16000 Hz
+## Next Steps
 
-```text
-cmd=/usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav --output /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-cmd=/usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav -o /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-cmd=/usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_input.wav /home/sysop/projects/mc-kenneth/lavasr_ablation_output/audio/synthetic_voice_16000hz_lavasr48k.wav --model v2 | exit=1 | stdout=<empty> | stderr=/usr/bin/python3: No module named lavasr
-```
+- Capture raw SDR audio (before any denoising) for a cleaner baseline comparison
+- Test with Whisper base/small for better transcription accuracy
+- If hardware arrives (TRAM 1410 antenna + adapter): capture live signals for real-world test
