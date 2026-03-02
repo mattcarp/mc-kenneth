@@ -6,17 +6,20 @@
     <title>Kenneth Dashboard</title>
     <style>
       :root {
-        --bg: #0a0a0a;
-        --zinc-950: #111113;
-        --zinc-900: #18181b;
-        --zinc-800: #27272a;
-        --zinc-700: #3f3f46;
-        --zinc-500: #71717a;
-        --zinc-300: #d4d4d8;
-        --zinc-100: #f4f4f5;
-        --green: #22c55e;
-        --amber: #f59e0b;
-        --red: #ef4444;
+        --bg-0: #070a0e;
+        --bg-1: #0f1723;
+        --bg-2: #121f2e;
+        --surface: #101a28;
+        --surface-2: #162335;
+        --border: #223549;
+        --text: #e2e8f0;
+        --text-dim: #93a7bf;
+        --text-soft: #7f95af;
+        --good: #22c55e;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+        --info: #38bdf8;
+        --new: #34d399;
       }
 
       * {
@@ -26,40 +29,102 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background: radial-gradient(circle at top right, #1f1f22 0%, var(--bg) 42%), var(--bg);
-        color: var(--zinc-100);
+        background:
+          radial-gradient(circle at 18% -8%, rgba(56, 189, 248, 0.18), transparent 38%),
+          radial-gradient(circle at 88% 0%, rgba(52, 211, 153, 0.1), transparent 36%),
+          linear-gradient(180deg, var(--bg-2), var(--bg-0));
+        color: var(--text);
         font-family: "IBM Plex Mono", "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
       }
 
       .wrap {
-        width: min(1200px, 94vw);
+        width: min(1240px, 94vw);
         margin: 0 auto;
-        padding: 24px 0 40px;
+        padding: 24px 0 42px;
       }
 
       .topbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 20px;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .topbar-left {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
       }
 
       h1 {
         margin: 0;
-        font-size: 1.08rem;
-        letter-spacing: 0.04em;
+        font-size: 1.02rem;
+        letter-spacing: 0.07em;
         text-transform: uppercase;
-        color: var(--zinc-300);
+        color: var(--text);
+      }
+
+      .subtitle {
+        color: var(--text-soft);
+        font-size: 0.75rem;
+      }
+
+      .control-panel {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(16, 26, 40, 0.76);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px;
+      }
+
+      button,
+      select {
+        font: inherit;
+        color: var(--text);
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        height: 32px;
+        padding: 0 12px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: #325577;
+      }
+
+      button:active {
+        transform: translateY(1px);
+      }
+
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-dim);
+        font-size: 0.78rem;
+        padding: 0 6px;
+      }
+
+      .toggle input {
+        accent-color: var(--new);
       }
 
       .badge {
-        border: 1px solid var(--zinc-700);
+        border: 1px solid var(--border);
         border-radius: 999px;
         padding: 6px 10px;
-        font-size: 0.8rem;
-        color: var(--zinc-300);
-        background: rgba(39, 39, 42, 0.6);
+        font-size: 0.78rem;
+        color: var(--text-dim);
+        background: rgba(22, 35, 53, 0.7);
+        min-width: 250px;
+        text-align: center;
       }
 
       .grid {
@@ -70,19 +135,19 @@
 
       .card {
         grid-column: span 12;
-        background: linear-gradient(180deg, rgba(39, 39, 42, 0.52), rgba(24, 24, 27, 0.9));
-        border: 1px solid var(--zinc-800);
-        border-radius: 12px;
+        background: linear-gradient(180deg, rgba(22, 35, 53, 0.84), rgba(10, 18, 30, 0.95));
+        border: 1px solid var(--border);
+        border-radius: 14px;
         padding: 14px;
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+        box-shadow: 0 16px 32px rgba(0, 0, 0, 0.32);
       }
 
       .card h2 {
-        margin: 0 0 12px;
-        font-size: 0.9rem;
-        color: var(--zinc-300);
+        margin: 0 0 10px;
+        font-size: 0.86rem;
+        color: var(--text-dim);
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
       }
 
       .status-grid {
@@ -92,67 +157,193 @@
       }
 
       .metric {
-        background: rgba(17, 17, 19, 0.88);
-        border: 1px solid var(--zinc-800);
+        background: rgba(10, 18, 30, 0.86);
+        border: 1px solid var(--border);
         border-radius: 10px;
         padding: 10px;
       }
 
       .metric .label {
-        color: var(--zinc-500);
+        color: var(--text-soft);
         font-size: 0.72rem;
         margin-bottom: 5px;
         text-transform: uppercase;
       }
 
       .metric .value {
-        font-size: 1.02rem;
-        color: var(--zinc-100);
+        font-size: 1rem;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .ok {
-        color: var(--green);
+        color: var(--good);
       }
 
       .warn {
-        color: var(--amber);
+        color: var(--warn);
       }
 
       .bad {
-        color: var(--red);
+        color: var(--bad);
+      }
+
+      .info {
+        color: var(--info);
       }
 
       table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 0.85rem;
+        font-size: 0.82rem;
       }
 
       th,
       td {
         text-align: left;
-        padding: 8px 6px;
-        border-bottom: 1px solid var(--zinc-800);
+        padding: 9px 7px;
+        border-bottom: 1px solid rgba(34, 53, 73, 0.85);
+        vertical-align: top;
       }
 
       th {
-        color: var(--zinc-500);
+        color: var(--text-soft);
         font-weight: 500;
         text-transform: uppercase;
-        font-size: 0.72rem;
+        font-size: 0.69rem;
+        letter-spacing: 0.08em;
       }
 
       .muted {
-        color: var(--zinc-500);
+        color: var(--text-soft);
       }
 
       .empty {
-        color: var(--zinc-500);
+        color: var(--text-soft);
         font-size: 0.85rem;
         padding: 8px 0;
       }
 
-      @media (min-width: 980px) {
+      .signal-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 3px 8px;
+        border: 1px solid;
+      }
+
+      .signal-strong {
+        color: var(--good);
+        border-color: rgba(34, 197, 94, 0.45);
+        background: rgba(34, 197, 94, 0.1);
+      }
+
+      .signal-medium {
+        color: var(--warn);
+        border-color: rgba(245, 158, 11, 0.45);
+        background: rgba(245, 158, 11, 0.1);
+      }
+
+      .signal-weak {
+        color: #f97316;
+        border-color: rgba(249, 115, 22, 0.45);
+        background: rgba(249, 115, 22, 0.1);
+      }
+
+      .signal-faint {
+        color: #94a3b8;
+        border-color: rgba(148, 163, 184, 0.4);
+        background: rgba(148, 163, 184, 0.08);
+      }
+
+      .new-tag {
+        margin-left: 8px;
+        color: var(--new);
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+      }
+
+      .capture-row-new {
+        background: linear-gradient(90deg, rgba(52, 211, 153, 0.12), transparent 48%);
+      }
+
+      .alert-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .alert-item {
+        border: 1px solid var(--border);
+        border-left-width: 4px;
+        border-radius: 10px;
+        background: rgba(10, 18, 30, 0.78);
+        padding: 9px 10px;
+      }
+
+      .alert-item.critical {
+        border-left-color: var(--bad);
+      }
+
+      .alert-item.warning {
+        border-left-color: var(--warn);
+      }
+
+      .alert-item.info {
+        border-left-color: var(--info);
+      }
+
+      .alert-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 5px;
+      }
+
+      .alert-title {
+        color: var(--text);
+        font-size: 0.82rem;
+      }
+
+      .alert-meta {
+        font-size: 0.74rem;
+        color: var(--text-soft);
+      }
+
+      .stress-bar {
+        position: relative;
+        width: 130px;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(71, 85, 105, 0.4);
+        overflow: hidden;
+      }
+
+      .stress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #22c55e, #f59e0b 65%, #ef4444);
+      }
+
+      .stress-text {
+        font-size: 0.68rem;
+        color: var(--text-soft);
+        margin-top: 3px;
+      }
+
+      .countdown {
+        color: var(--text-soft);
+      }
+
+      @media (min-width: 1020px) {
         .status-card {
           grid-column: span 12;
         }
@@ -166,9 +357,39 @@
         }
       }
 
+      @media (max-width: 900px) {
+        .topbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .control-panel {
+          flex-wrap: wrap;
+          border-radius: 12px;
+          padding: 10px;
+          justify-content: center;
+        }
+
+        .badge {
+          min-width: 0;
+          width: 100%;
+          border-radius: 10px;
+        }
+      }
+
       @media (max-width: 760px) {
         .status-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        th,
+        td {
+          padding: 8px 5px;
+          font-size: 0.77rem;
+        }
+
+        .stress-bar {
+          width: 90px;
         }
       }
     </style>
@@ -176,8 +397,21 @@
   <body>
     <main class="wrap">
       <div class="topbar">
-        <h1>Kenneth Signal Dashboard</h1>
-        <div class="badge" id="updatedAt">Refreshing every 10s...</div>
+        <div class="topbar-left">
+          <h1>Kenneth Signal Dashboard</h1>
+          <div class="subtitle">EPIC 4 mission triage view: captures, stress alerts, and live status.</div>
+        </div>
+        <div class="control-panel">
+          <button id="refreshNow" type="button">Refresh now</button>
+          <label class="toggle"><input id="autoRefreshToggle" type="checkbox" checked /> Auto-refresh</label>
+          <select id="refreshInterval" aria-label="Refresh interval">
+            <option value="5000">5s</option>
+            <option value="10000" selected>10s</option>
+            <option value="15000">15s</option>
+            <option value="30000">30s</option>
+          </select>
+          <div class="badge" id="updatedAt">Booting dashboard...</div>
+        </div>
       </div>
 
       <section class="grid">
@@ -199,18 +433,57 @@
     </main>
 
     <script>
-      const REFRESH_MS = 10000;
+      let refreshMs = 10000;
+      let autoRefreshEnabled = true;
+      let intervalHandle = null;
+      let countdownHandle = null;
+      let nextRefreshAt = Date.now() + refreshMs;
+      const seenCaptureIds = new Set();
 
       const statusMetrics = document.getElementById("statusMetrics");
       const capturesContent = document.getElementById("capturesContent");
       const alertsContent = document.getElementById("alertsContent");
       const updatedAt = document.getElementById("updatedAt");
+      const refreshNowBtn = document.getElementById("refreshNow");
+      const autoRefreshToggle = document.getElementById("autoRefreshToggle");
+      const refreshIntervalSelect = document.getElementById("refreshInterval");
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
 
       function fmtDate(iso) {
         if (!iso) return "-";
         const dt = new Date(iso);
         if (Number.isNaN(dt.getTime())) return "-";
         return dt.toLocaleString();
+      }
+
+      function getSignalClass(powerDbfs) {
+        const p = Number(powerDbfs);
+        if (!Number.isFinite(p)) return { label: "unknown", cls: "signal-faint" };
+        if (p > -28) return { label: "strong", cls: "signal-strong" };
+        if (p > -40) return { label: "medium", cls: "signal-medium" };
+        if (p > -55) return { label: "weak", cls: "signal-weak" };
+        return { label: "faint", cls: "signal-faint" };
+      }
+
+      function getSeverityClass(severity) {
+        if (severity === "critical") return "bad";
+        if (severity === "warning") return "warn";
+        return "info";
+      }
+
+      function extractStressScore(alert) {
+        const raw = alert?.metadata?.stress_score;
+        const value = Number(raw);
+        if (!Number.isFinite(value)) return null;
+        return Math.max(0, Math.min(100, value));
       }
 
       function renderStatus(status, health) {
@@ -222,11 +495,11 @@
         statusMetrics.innerHTML = `
           <div class="metric">
             <div class="label">API</div>
-            <div class="value ${apiClass}">${apiState}</div>
+            <div class="value ${apiClass}">${escapeHtml(apiState)}</div>
           </div>
           <div class="metric">
             <div class="label">HackRF</div>
-            <div class="value ${hackrfClass}">${hackrf}</div>
+            <div class="value ${hackrfClass}">${escapeHtml(hackrf)}</div>
           </div>
           <div class="metric">
             <div class="label">Captures</div>
@@ -238,15 +511,15 @@
           </div>
           <div class="metric">
             <div class="label">Coverage</div>
-            <div class="value muted">${status?.coverage || "n/a"}</div>
+            <div class="value muted">${escapeHtml(status?.coverage || "n/a")}</div>
           </div>
           <div class="metric">
             <div class="label">Location</div>
-            <div class="value muted">${status?.location || "n/a"}</div>
+            <div class="value muted">${escapeHtml(status?.location || "n/a")}</div>
           </div>
           <div class="metric">
             <div class="label">API Version</div>
-            <div class="value muted">${health?.api_version || status?.api_version || "n/a"}</div>
+            <div class="value muted">${escapeHtml(health?.api_version || status?.api_version || "n/a")}</div>
           </div>
           <div class="metric">
             <div class="label">Server Time</div>
@@ -262,17 +535,26 @@
         }
 
         const rows = captures
-          .slice(0, 15)
-          .map(
-            (c) => `
-              <tr>
-                <td>${fmtDate(c.created_at)}</td>
-                <td>${Number(c.frequency_mhz || 0).toFixed(3)}</td>
-                <td>${Number(c.duration_sec || 0).toFixed(1)}s</td>
-                <td>${Number(c.average_power_dbfs || 0).toFixed(2)}</td>
+          .slice(0, 18)
+          .map((capture) => {
+            const isNew = !seenCaptureIds.has(capture.id);
+            seenCaptureIds.add(capture.id);
+            const signal = getSignalClass(capture.average_power_dbfs);
+            const statusSafe = escapeHtml(capture.status || "success");
+
+            return `
+              <tr class="${isNew ? "capture-row-new" : ""}">
+                <td>
+                  ${fmtDate(capture.created_at)}${isNew ? '<span class="new-tag">new</span>' : ""}
+                </td>
+                <td>${Number(capture.frequency_mhz || 0).toFixed(3)}</td>
+                <td>${Number(capture.duration_sec || 0).toFixed(1)}s</td>
+                <td>${Number(capture.average_power_dbfs || 0).toFixed(2)}</td>
+                <td><span class="signal-chip ${signal.cls}">${signal.label}</span></td>
+                <td class="muted">${statusSafe}</td>
               </tr>
-            `
-          )
+            `;
+          })
           .join("");
 
         capturesContent.innerHTML = `
@@ -283,6 +565,8 @@
                 <th>MHz</th>
                 <th>Duration</th>
                 <th>Power dBFS</th>
+                <th>Signal</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -296,35 +580,35 @@
           return;
         }
 
-        const rows = alerts
-          .slice(0, 12)
-          .map((a) => {
-            const freq = a.frequency_mhz ? `${Number(a.frequency_mhz).toFixed(3)} MHz` : "n/a";
-            const sevClass = a.severity === "critical" ? "bad" : a.severity === "warning" ? "warn" : "ok";
+        const items = alerts
+          .slice(0, 10)
+          .map((alert) => {
+            const severity = alert?.severity || "info";
+            const severityClass = getSeverityClass(severity);
+            const stressScore = extractStressScore(alert);
+            const transcript = alert?.transcript ? escapeHtml(alert.transcript).slice(0, 135) : "No transcript available";
+            const freq = alert?.frequency_mhz ? `${Number(alert.frequency_mhz).toFixed(3)} MHz` : "n/a";
+            const signalType = escapeHtml(alert?.signal_type || "unknown");
+
             return `
-              <tr>
-                <td>${fmtDate(a.created_at)}</td>
-                <td class="${sevClass}">${a.severity || "unknown"}</td>
-                <td>${a.title || "untitled"}</td>
-                <td class="muted">${freq}</td>
-              </tr>
+              <article class="alert-item ${escapeHtml(severity)}">
+                <div class="alert-head">
+                  <div class="alert-title">${escapeHtml(alert?.title || "untitled")}</div>
+                  <div class="${severityClass}">${escapeHtml(severity)}</div>
+                </div>
+                <div class="alert-meta">${fmtDate(alert?.created_at)} | ${freq} | ${signalType}</div>
+                <div class="alert-meta">${transcript}</div>
+                ${
+                  stressScore === null
+                    ? '<div class="stress-text">Stress score unavailable</div>'
+                    : `<div class="stress-bar"><div class="stress-fill" style="width:${stressScore}%"></div></div><div class="stress-text">Stress score: ${stressScore.toFixed(0)}/100</div>`
+                }
+              </article>
             `;
           })
           .join("");
 
-        alertsContent.innerHTML = `
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Severity</th>
-                <th>Alert</th>
-                <th>Freq</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        `;
+        alertsContent.innerHTML = `<div class="alert-stack">${items}</div>`;
       }
 
       async function fetchJson(path) {
@@ -335,30 +619,84 @@
         return response.json();
       }
 
+      function updateTicker(success, message) {
+        if (!autoRefreshEnabled) {
+          updatedAt.textContent = `${message} | Auto-refresh paused`;
+          return;
+        }
+        if (success) {
+          updatedAt.innerHTML = `${message} | <span class="countdown">next in ${Math.max(
+            0,
+            Math.ceil((nextRefreshAt - Date.now()) / 1000)
+          )}s</span>`;
+        } else {
+          updatedAt.textContent = `${message} | retry in ${Math.ceil(refreshMs / 1000)}s`;
+        }
+      }
+
+      function scheduleRefreshTimer() {
+        if (intervalHandle) clearInterval(intervalHandle);
+        if (countdownHandle) clearInterval(countdownHandle);
+
+        if (!autoRefreshEnabled) {
+          updateTicker(true, `Updated ${new Date().toLocaleTimeString()}`);
+          return;
+        }
+
+        nextRefreshAt = Date.now() + refreshMs;
+        intervalHandle = setInterval(async () => {
+          await refresh();
+        }, refreshMs);
+
+        countdownHandle = setInterval(() => {
+          updateTicker(true, `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}`);
+        }, 1000);
+      }
+
+      let lastUpdatedAt = Date.now();
+
       async function refresh() {
         try {
           const [status, health, captures, alerts] = await Promise.all([
             fetchJson("/status"),
             fetchJson("/health"),
-            fetchJson("/captures?limit=50"),
-            fetchJson("/stress-alerts?limit=50"),
+            fetchJson("/captures?limit=80"),
+            fetchJson("/stress-alerts?limit=60"),
           ]);
 
           renderStatus(status, health);
           renderCaptures(captures);
           renderStressAlerts(alerts);
-          updatedAt.textContent = `Updated ${new Date().toLocaleTimeString()} | Auto-refresh 10s`;
+
+          lastUpdatedAt = Date.now();
+          nextRefreshAt = Date.now() + refreshMs;
+          updateTicker(true, `Updated ${new Date(lastUpdatedAt).toLocaleTimeString()}`);
         } catch (err) {
           statusMetrics.innerHTML =
             '<div class="metric"><div class="label">Status</div><div class="value bad">API unreachable</div></div>';
-          capturesContent.innerHTML = `<div class="empty">Error loading captures: ${err.message}</div>`;
-          alertsContent.innerHTML = `<div class="empty">Error loading alerts: ${err.message}</div>`;
-          updatedAt.textContent = "Update failed | Retrying in 10s";
+          capturesContent.innerHTML = `<div class="empty">Error loading captures: ${escapeHtml(err.message)}</div>`;
+          alertsContent.innerHTML = `<div class="empty">Error loading alerts: ${escapeHtml(err.message)}</div>`;
+          updateTicker(false, "Update failed");
         }
       }
 
+      refreshNowBtn.addEventListener("click", async () => {
+        await refresh();
+      });
+
+      autoRefreshToggle.addEventListener("change", () => {
+        autoRefreshEnabled = autoRefreshToggle.checked;
+        scheduleRefreshTimer();
+      });
+
+      refreshIntervalSelect.addEventListener("change", () => {
+        refreshMs = Number(refreshIntervalSelect.value) || 10000;
+        scheduleRefreshTimer();
+        refresh();
+      });
+
       refresh();
-      setInterval(refresh, REFRESH_MS);
+      scheduleRefreshTimer();
     </script>
   </body>
 </html>
