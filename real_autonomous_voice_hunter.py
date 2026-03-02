@@ -56,6 +56,7 @@ class RealAutonomousVoiceHunter:
         self.aviation_frequencies = {
             'Emergency (121.5)': 121.500e6,          # HIGHEST PRIORITY - Emergency
             'Tower Control': 119.100e6,              # HIGH - ATC
+            'Malta Approach (119.45)': 119.450e6,    # HIGH - Requested validation frequency
             'Approach Control': 120.400e6,           # HIGH - Approach/departure
             'Ground Control': 121.700e6,             # MEDIUM - Ground operations
             'Air-to-Air': 122.750e6,                # MEDIUM - Pilot chat
@@ -413,7 +414,7 @@ class RealAutonomousVoiceHunter:
         
         return white_noise + atmospheric + equipment + fading
     
-    def detect_voice_activity(self, audio_signal):
+    def detect_voice_activity(self, audio_signal, sample_rate):
         """Detect voice activity in audio signal"""
         
         if len(audio_signal) == 0:
@@ -424,7 +425,7 @@ class RealAutonomousVoiceHunter:
         
         # Spectral analysis for voice characteristics
         if len(audio_signal) > 1024:
-            freqs, psd = signal.welch(audio_signal, self.audio_sample_rate, nperseg=1024)
+            freqs, psd = signal.welch(audio_signal, sample_rate, nperseg=1024)
             
             # Voice band energy (300-3400 Hz)
             voice_band_mask = (freqs >= 300) & (freqs <= 3400)
@@ -454,7 +455,7 @@ class RealAutonomousVoiceHunter:
         if audio_file:
             # Load captured audio
             try:
-                audio_signal, _ = sf.read(audio_file)
+                audio_signal, detected_sample_rate = sf.read(audio_file)
                 source_type = "REAL RF"
             except:
                 audio_signal = None
@@ -462,6 +463,7 @@ class RealAutonomousVoiceHunter:
         if not audio_file or audio_signal is None:
             # Fallback to simulation
             audio_signal = self.create_fallback_signal(frequency_name, frequency_hz, duration)
+            detected_sample_rate = self.audio_sample_rate
             
             # Save fallback audio
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -470,7 +472,7 @@ class RealAutonomousVoiceHunter:
             source_type = "SIMULATION"
         
         # Detect voice activity
-        voice_score = self.detect_voice_activity(audio_signal)
+        voice_score = self.detect_voice_activity(audio_signal, detected_sample_rate)
         
         self.logger.info(f"   Voice Score: {voice_score:.3f} (threshold: {self.voice_threshold})")
         
