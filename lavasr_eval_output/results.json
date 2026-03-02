@@ -1,0 +1,119 @@
+{
+  "generated_at_utc": "2026-03-02 01:06:00 UTC",
+  "summary": {
+    "samples_total": 4,
+    "samples_with_lavasr": 0,
+    "samples_with_wer": 0,
+    "wer": {
+      "count": 0,
+      "avg_before": null,
+      "avg_after": null,
+      "avg_delta": null
+    },
+    "pesq": {
+      "count": 0,
+      "avg_before": null,
+      "avg_after": null,
+      "avg_delta": null
+    },
+    "stoi": {
+      "count": 0,
+      "avg_before": null,
+      "avg_after": null,
+      "avg_delta": null
+    },
+    "integration_recommendation": "no"
+  },
+  "samples": [
+    {
+      "sample": "audio_samples/net_fm_after.mp3",
+      "reference_audio": "audio_samples/net_fm_after_PROPER.mp3",
+      "reference_source": "paired-audio",
+      "lavasr_success": false,
+      "wer_before": null,
+      "wer_after": null,
+      "wer_delta": null,
+      "pesq_before": null,
+      "pesq_after": null,
+      "pesq_delta": null,
+      "stoi_before": null,
+      "stoi_after": null,
+      "stoi_delta": null,
+      "transcript_before": null,
+      "transcript_after": null,
+      "reference_text": null,
+      "error": "faster-whisper unavailable: No module named 'faster_whisper'"
+    },
+    {
+      "sample": "audio_samples/one_radio_after.mp3",
+      "reference_audio": null,
+      "reference_source": "none",
+      "lavasr_success": false,
+      "wer_before": null,
+      "wer_after": null,
+      "wer_delta": null,
+      "pesq_before": null,
+      "pesq_after": null,
+      "pesq_delta": null,
+      "stoi_before": null,
+      "stoi_after": null,
+      "stoi_delta": null,
+      "transcript_before": null,
+      "transcript_after": null,
+      "reference_text": null,
+      "error": "faster-whisper unavailable: No module named 'faster_whisper'"
+    },
+    {
+      "sample": "audio_samples/one_radio_before.mp3",
+      "reference_audio": "audio_samples/one_radio_after.mp3",
+      "reference_source": "paired-audio",
+      "lavasr_success": false,
+      "wer_before": null,
+      "wer_after": null,
+      "wer_delta": null,
+      "pesq_before": null,
+      "pesq_after": null,
+      "pesq_delta": null,
+      "stoi_before": null,
+      "stoi_after": null,
+      "stoi_delta": null,
+      "transcript_before": null,
+      "transcript_after": null,
+      "reference_text": null,
+      "error": "faster-whisper unavailable: No module named 'faster_whisper'"
+    },
+    {
+      "sample": "audio_samples/radio_malta_after.mp3",
+      "reference_audio": "audio_samples/radio_malta_after_PROPER.mp3",
+      "reference_source": "paired-audio",
+      "lavasr_success": false,
+      "wer_before": null,
+      "wer_after": null,
+      "wer_delta": null,
+      "pesq_before": null,
+      "pesq_after": null,
+      "pesq_delta": null,
+      "stoi_before": null,
+      "stoi_after": null,
+      "stoi_delta": null,
+      "transcript_before": null,
+      "transcript_after": null,
+      "reference_text": null,
+      "error": "faster-whisper unavailable: No module named 'faster_whisper'"
+    }
+  ],
+  "environment": {
+    "python": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "sample_dir": "/home/sysop/projects/mc-kenneth/audio_samples",
+    "whisper_model": "small",
+    "whisper_device": "cpu",
+    "whisper_compute_type": "int8"
+  },
+  "install_attempt": {
+    "command": "/usr/bin/python3 -m pip install lavasr",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "error: externally-managed-environment\n\n\u00d7 This environment is externally managed\n\u2570\u2500> To install Python packages system-wide, try apt install\n    python3-xyz, where xyz is the package you are trying to\n    install.\n    \n    If you wish to install a non-Debian-packaged Python package,\n    create a virtual environment using python3 -m venv path/to/venv.\n    Then use path/to/venv/bin/python and path/to/venv/bin/pip. Make\n    sure you have python3-full installed.\n    \n    If you wish to install a non-Debian packaged Python application,\n    it may be easiest to use pipx install xyz, which will manage a\n    virtual environment for you. Make sure you have pipx installed.\n    \n    See /usr/share/doc/python3.12/README.venv for more information.\n\nnote: If you believe this is a mistake, please contact your Python installation or OS distribution provider. You can override this, at the risk of breaking your Python installation or OS, by passing --break-system-packages.\nhint: See PEP 668 for the detailed specification."
+  },
+  "lavasr_logs": "[net_fm_after.mp3]\n$ /usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/audio_samples/net_fm_after.mp3 --output /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/net_fm_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/audio_samples/net_fm_after.mp3 -o /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/net_fm_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/audio_samples/net_fm_after.mp3 /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/net_fm_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n[one_radio_after.mp3]\n$ /usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/audio_samples/one_radio_after.mp3 --output /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/audio_samples/one_radio_after.mp3 -o /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/audio_samples/one_radio_after.mp3 /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n[one_radio_before.mp3]\n$ /usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/audio_samples/one_radio_before.mp3 --output /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_before__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/audio_samples/one_radio_before.mp3 -o /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_before__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/audio_samples/one_radio_before.mp3 /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/one_radio_before__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n[radio_malta_after.mp3]\n$ /usr/bin/python3 -m lavasr --input /home/sysop/projects/mc-kenneth/audio_samples/radio_malta_after.mp3 --output /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/radio_malta_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr -i /home/sysop/projects/mc-kenneth/audio_samples/radio_malta_after.mp3 -o /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/radio_malta_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr\n\n$ /usr/bin/python3 -m lavasr /home/sysop/projects/mc-kenneth/audio_samples/radio_malta_after.mp3 /home/sysop/projects/mc-kenneth/lavasr_eval_output/enhanced/radio_malta_after__lavasr_v2.wav --model v2\nexit=1\nstdout=<empty>\nstderr=/usr/bin/python3: No module named lavasr"
+}
