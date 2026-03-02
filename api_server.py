@@ -37,8 +37,8 @@ from pathlib import Path
 from api_maritime_aviation import add_maritime_aviation_routes
 from telegram_alerts import send_alert as send_telegram_alert
 from discord_alerts import send_alert as send_discord_alert
-from whisper_transcription import transcribe_audio
-from ai_analysis_pipeline import extract_stress_features, score_stress
+from whisper_transcription import WhisperConfig, transcribe_audio
+from ai_analysis_pipeline import analyze_audio_file, extract_stress_features, score_stress
 
 # Initialize FastAPI with rich metadata
 app = FastAPI(
@@ -1145,6 +1145,41 @@ async def stress(file: str = Query(..., description="Audio filename under known 
             "voiced_ratio": features.voiced_ratio,
         },
     }
+
+
+@app.get("/analysis/audio", tags=["analysis"])
+async def analyze_audio(
+    file: str = Query(..., description="Audio filename under known capture dirs"),
+    model_size: str = Query("large-v3", description="Whisper model size"),
+    backend: str = Query(
+        "auto", description="Whisper backend: auto, faster-whisper, openai-whisper"
+    ),
+    language: Optional[str] = Query(
+        None, description="Optional fixed language hint (e.g. en, mt, ar, it)"
+    ),
+):
+    """
+    Run full AI analysis pipeline: transcription + stress scoring + keyword triage.
+    """
+    audio_path = _resolve_audio_file(file)
+    if audio_path is None:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    try:
+        whisper_config = WhisperConfig(
+            model_size=model_size,
+            backend=backend,
+            language=language,
+        )
+        result = analyze_audio_file(audio_path, whisper_config=whisper_config)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Audio analysis failed: {exc}")
+
+    return result
 
 
 @app.post("/alerts", tags=["alerts"], response_model=AlertRecord)

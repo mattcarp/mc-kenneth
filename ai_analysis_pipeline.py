@@ -212,7 +212,7 @@ def analyze_audio_file(
     transcript = transcribe_audio_file(path, whisper_config)
     transcript_text = str(transcript.get("text", "")).strip()
     stress_features = extract_stress_features(path)
-    stress_score = compute_stress_score(path)
+    stress_score = score_stress(stress_features)
     keyword_result = classify_threat_keywords(transcript_text, flagged_terms)
     if stress_score > HIGH_STRESS_THRESHOLD:
         send_telegram_alert(

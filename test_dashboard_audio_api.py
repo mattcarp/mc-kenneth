@@ -85,3 +85,68 @@ def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch)
     assert body["file"] == "sample.wav"
     assert body["stress_score"] == 42
     assert body["features"]["pitch_variance_hz2"] == 320.0
+
+
+def test_analysis_audio_endpoint_returns_pipeline_payload(tmp_path: Path, monkeypatch) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+
+    def fake_analyze(path, whisper_config=None, flagged_terms=None):
+        assert path == wav_path
+        assert whisper_config.model_size == "tiny"
+        assert whisper_config.backend == "auto"
+        assert whisper_config.language == "en"
+        return {
+            "audio_file": str(path),
+            "transcript": {"text": "mayday we need help", "language": "en", "segments": []},
+            "stress_score": 91,
+            "stress_features": {
+                "pitch_variance_hz2": 742.0,
+                "speech_rate_per_sec": 1.2,
+                "rms_energy": 0.31,
+                "voiced_ratio": 0.76,
+            },
+            "threat_classification": {
+                "is_flagged": True,
+                "matched_terms": ["help", "mayday"],
+                "match_count": 2,
+            },
+        }
+
+    monkeypatch.setattr(api_server, "analyze_audio_file", fake_analyze)
+
+    response = client.get(
+        "/analysis/audio",
+        params={"file": "sample.wav", "model_size": "tiny", "backend": "auto", "language": "en"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["audio_file"].endswith("sample.wav")
+    assert body["transcript"]["text"] == "mayday we need help"
+    assert body["stress_score"] == 91
+    assert body["threat_classification"]["is_flagged"] is True
+
+
+def test_analysis_audio_endpoint_returns_bad_request_for_invalid_backend(
+    tmp_path: Path, monkeypatch
+) -> None:
+    wav_path = tmp_path / "sample.wav"
+    _write_test_wav(wav_path)
+    monkeypatch.setattr(api_server, "AUDIO_SEARCH_DIRS", [tmp_path])
+
+    def fake_analyze(path, whisper_config=None, flagged_terms=None):
+        raise ValueError(
+            "Unsupported whisper backend 'broken'. Use one of: auto, faster-whisper, openai-whisper"
+        )
+
+    monkeypatch.setattr(api_server, "analyze_audio_file", fake_analyze)
+
+    response = client.get(
+        "/analysis/audio",
+        params={"file": "sample.wav", "backend": "broken"},
+    )
+
+    assert response.status_code == 400
+    assert "Unsupported whisper backend 'broken'" in response.json()["detail"]
