@@ -203,3 +203,46 @@ def test_extended_capture_discards_noise_only_samples_before_write(
     assert monitor_calls == []
     assert hunter.stats["captures_saved"] == 0
     assert hunter.voice_captures == []
+
+
+def test_transcribe_audio_file_supports_openai_whisper_backend(
+    monkeypatch, tmp_path: Path
+) -> None:
+    audio_path = tmp_path / "sample.wav"
+    _write_test_wav(audio_path)
+
+    class DummyModel:
+        def transcribe(
+            self,
+            audio_file: str,
+            language=None,
+            beam_size: int = 5,
+            fp16: bool = False,
+            verbose: bool = False,
+        ):
+            assert audio_file.endswith("sample.wav")
+            assert language is None
+            assert beam_size == 5
+            assert fp16 is False
+            assert verbose is False
+            return {
+                "text": "hello from openai whisper",
+                "language": "en",
+                "segments": [
+                    {"start": 0.0, "end": 0.6, "text": "hello", "avg_logprob": -0.2},
+                    {"start": 0.6, "end": 1.0, "text": "from openai whisper", "avg_logprob": -0.3},
+                ],
+            }
+
+    def fake_load_model(model_size: str):
+        assert model_size == "large-v3"
+        return DummyModel()
+
+    monkeypatch.setitem(sys.modules, "whisper", types.SimpleNamespace(load_model=fake_load_model))
+
+    result = transcribe_audio_file(audio_path, WhisperConfig(backend="openai-whisper"))
+
+    assert result["text"] == "hello from openai whisper"
+    assert result["language"] == "en"
+    assert result["backend"] == "openai-whisper"
+    assert len(result["segments"]) == 2
