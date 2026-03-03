@@ -187,3 +187,55 @@ def test_high_stress_alert_triggers_discord_notification(monkeypatch) -> None:
     assert len(sent) == 1
     assert sent[0]["stress_score"] == 84
     assert "panicking and breathing heavily" in sent[0]["transcription_preview"]
+
+
+def test_high_priority_event_triggers_spotify_audio_alert(monkeypatch) -> None:
+    sent = []
+
+    def fake_dispatch_spotify_audio_alert(alert, stress_score):
+        sent.append({"title": alert.title, "stress_score": stress_score})
+        return True
+
+    monkeypatch.setattr(
+        api_server, "_dispatch_spotify_audio_alert", fake_dispatch_spotify_audio_alert
+    )
+
+    response = client.post(
+        "/alerts",
+        json={
+            "title": "Kenneth signal reported near ferry terminal",
+            "description": "Priority interception requested.",
+            "signal_type": "marine_vhf",
+            "source": "kenneth-sdr",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(sent) == 1
+    assert "Kenneth signal" in sent[0]["title"]
+    assert sent[0]["stress_score"] is None
+
+
+def test_routine_alert_does_not_trigger_spotify_audio_alert(monkeypatch) -> None:
+    sent = []
+
+    def fake_dispatch_spotify_audio_alert(alert, stress_score):
+        sent.append({"title": alert.title, "stress_score": stress_score})
+        return True
+
+    monkeypatch.setattr(
+        api_server, "_dispatch_spotify_audio_alert", fake_dispatch_spotify_audio_alert
+    )
+
+    response = client.post(
+        "/alerts",
+        json={
+            "title": "Routine harbor traffic",
+            "description": "Normal channel checks.",
+            "signal_type": "marine_vhf",
+            "source": "kenneth-sdr",
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(sent) == 0

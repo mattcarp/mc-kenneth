@@ -160,9 +160,9 @@ class AutonomousVoiceHunter:
         self.quick_sample_duration = 8    # Quick samples to detect voice
         self.extended_capture_duration = 60  # Extended capture when voice found
         self.voice_threshold = 0.08       # Voice detection sensitivity
-        # Aviation AM voice often has less concentrated 300-3400 Hz energy than FM/NFM,
-        # so a lower ratio floor reduces false rejections on valid ATC/pilot comms.
-        self.voice_ratio_threshold = float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08"))
+        # Keep VR gate at 8% max: a stricter 13% gate rejected real ATC audio
+        # (e.g., Malta Approach at 119.45 MHz with ~13.1% voice ratio and strong dynamic range).
+        self.voice_ratio_threshold = min(float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08")), 0.08)
         self.lock_extension_time = 30     # Extra time to stay locked after voice stops
         self.noise_gate_db = float(os.getenv("NOISE_GATE_DB", "-40"))
         self.noise_gate_rms = 10 ** (self.noise_gate_db / 20.0)

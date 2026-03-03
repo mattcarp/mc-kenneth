@@ -31,6 +31,7 @@ import json
 import uuid
 import io
 import wave
+import shlex
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -328,6 +329,20 @@ DISTRESS_KEYWORDS = {
     "distress",
     "man overboard",
     "help",
+    "emergency",
+}
+HIGH_PRIORITY_AUDIO_TERMS = {
+    "kenneth",
+    "kenneth signal",
+    "ferry",
+    "ferry terminal",
+    "mayday",
+    "pan-pan",
+    "pan pan",
+    "sos",
+    "distress",
+    "man overboard",
+    "urgent",
     "emergency",
 }
 
@@ -653,6 +668,95 @@ def _extract_stress_score(payload: AlertCreate) -> Optional[float]:
         if score is not None:
             return score
     return None
+
+
+def _is_truthy_env(value: Optional[str], default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_high_priority_audio_event(
+    payload: AlertCreate,
+    severity: AlertSeverity,
+    stress_score: Optional[float],
+    is_distress: bool,
+) -> bool:
+    if is_distress or severity == AlertSeverity.CRITICAL:
+        return True
+    if stress_score is not None and stress_score > 70.0:
+        return True
+
+    metadata = payload.metadata or {}
+    priority_flag = str(metadata.get("priority", "")).strip().lower()
+    if priority_flag in {"high", "critical", "urgent"}:
+        return True
+
+    text = " ".join(
+        filter(
+            None,
+            [
+                payload.title,
+                payload.description,
+                payload.transcript,
+                " ".join(payload.tags or []),
+                str(metadata.get("event", "")),
+                str(metadata.get("trigger", "")),
+                str(metadata.get("category", "")),
+            ],
+        )
+    ).lower()
+    return any(term in text for term in HIGH_PRIORITY_AUDIO_TERMS)
+
+
+def _dispatch_spotify_audio_alert(alert: AlertRecord, stress_score: Optional[float]) -> bool:
+    if not _is_truthy_env(os.getenv("SPOTIFY_ALERTS_ENABLED"), default=True):
+        return False
+
+    alert_uri = os.getenv("SPOTIFY_ALERT_URI", "spotify:search:alert%20tone")
+    command_template = os.getenv("SPOTIFY_ALERT_COMMAND")
+    timeout_sec = int(os.getenv("SPOTIFY_ALERT_TIMEOUT", "5"))
+
+    if command_template:
+        try:
+            custom_cmd = [
+                part.format(
+                    uri=alert_uri,
+                    title=alert.title,
+                    severity=alert.severity.value,
+                    alert_id=alert.id,
+                    stress_score=(
+                        f"{stress_score:.1f}" if stress_score is not None else ""
+                    ),
+                )
+                for part in shlex.split(command_template)
+            ]
+            result = subprocess.run(
+                custom_cmd,
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                check=False,
+            )
+            return result.returncode == 0
+        except (ValueError, FileNotFoundError, subprocess.SubprocessError):
+            return False
+
+    commands = [
+        ["open", "-a", "Spotify", alert_uri],
+        ["open", alert_uri],
+    ]
+    for cmd in commands:
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=timeout_sec, check=False
+            )
+        except (FileNotFoundError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            return True
+
+    return False
 
 
 def _transcription_preview(payload: AlertCreate) -> str:
@@ -1313,6 +1417,8 @@ async def create_alert(
             stress_score,
             preview,
         )
+    if _is_high_priority_audio_event(payload, severity, stress_score, is_distress):
+        background_tasks.add_task(_dispatch_spotify_audio_alert, record, stress_score)
     await _broadcast_alert(record)
 
     return record

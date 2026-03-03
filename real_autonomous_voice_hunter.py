@@ -84,9 +84,9 @@ class RealAutonomousVoiceHunter:
         
         # Voice detection settings
         self.voice_threshold = 0.08  # Combined voice score threshold
-        # Aviation AM speech can spread energy outside FM-leaning voice features,
-        # so we use a lower voice-band ratio floor to avoid false negatives.
-        self.voice_ratio_threshold = float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08"))
+        # Keep VR gate at 8% max: a stricter 13% gate rejected real ATC audio
+        # (e.g., Malta Approach at 119.45 MHz with ~13.1% voice ratio and strong dynamic range).
+        self.voice_ratio_threshold = min(float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08")), 0.08)
         self.lock_duration = 60  # Lock for 60 seconds when voice detected
         
         # Statistics
@@ -145,24 +145,33 @@ class RealAutonomousVoiceHunter:
         resampled = signal.resample_poly(audio, self.demod_audio_sample_rate, self.sample_rate)
         return resampled.astype(np.float32)
 
-    def _am_demodulate(self, iq_samples):
+    def demodulate_am(self, iq_samples):
         envelope = np.abs(iq_samples)
         audio = envelope - np.mean(envelope)
         return self._resample_to_16k(audio)
 
-    def _nfm_demodulate(self, iq_samples):
+    def demodulate_nfm(self, iq_samples):
         if len(iq_samples) < 2:
             return np.array([], dtype=np.float32)
-        iq_norm = iq_samples / (np.abs(iq_samples) + 1e-12)
-        audio = np.angle(iq_norm[1:] * np.conj(iq_norm[:-1]))
+        audio = np.angle(iq_samples[1:] * np.conj(iq_samples[:-1]))
         return self._resample_to_16k(audio)
 
-    def _fm_demodulate(self, iq_samples):
+    def demodulate_fm(self, iq_samples):
         if len(iq_samples) < 2:
             return np.array([], dtype=np.float32)
         phase = np.unwrap(np.angle(iq_samples))
         audio = np.diff(phase)
         return self._resample_to_16k(audio)
+
+    # Backwards-compatible aliases for existing tests/callers.
+    def _am_demodulate(self, iq_samples):
+        return self.demodulate_am(iq_samples)
+
+    def _nfm_demodulate(self, iq_samples):
+        return self.demodulate_nfm(iq_samples)
+
+    def _fm_demodulate(self, iq_samples):
+        return self.demodulate_fm(iq_samples)
         
     def attempt_real_rf_capture(self, frequency_name, frequency_hz, duration):
         """YOLO real RF capture from SDRplay/RTL-SDR"""
@@ -201,11 +210,11 @@ class RealAutonomousVoiceHunter:
 
                     demod_mode = self._select_demod_mode(frequency_hz)
                     if demod_mode == "am":
-                        audio_demod = self._am_demodulate(iq_complex)
+                        audio_demod = self.demodulate_am(iq_complex)
                     elif demod_mode == "nfm":
-                        audio_demod = self._nfm_demodulate(iq_complex)
+                        audio_demod = self.demodulate_nfm(iq_complex)
                     else:
-                        audio_demod = self._fm_demodulate(iq_complex)
+                        audio_demod = self.demodulate_fm(iq_complex)
                     
                     # Audio processing for voice extraction
                     if len(audio_demod) > 0:
