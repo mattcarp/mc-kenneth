@@ -13,6 +13,7 @@ from datetime import datetime
 import threading
 import sys
 from scipy import signal
+from scan_config import demod_mode_by_frequency_hz, load_scan_config
 
 class VoiceHuntingScanner:
     """Intelligent scanner that hunts for actual human speech"""
@@ -42,6 +43,18 @@ class VoiceHuntingScanner:
             'Air-to-Air': 122.750e6,         # Pilot-to-pilot
             'ATIS Local': 118.250e6,         # Automated terminal info
         }
+
+        # Shared scan configuration additions (EPIRB/AIS/amateur coverage).
+        self.scan_config = load_scan_config()
+        self.demod_modes = demod_mode_by_frequency_hz()
+        for band in self.scan_config["bands"]:
+            voice_key = band.get("voice_key")
+            if not voice_key:
+                continue
+            self.maritime_frequencies.setdefault(
+                voice_key,
+                float(band["frequency_mhz"]) * 1e6,
+            )
         
         self.sample_duration = 8  # 8-second quick samples
         self.long_sample_duration = 45  # 45-second samples when voice found

@@ -47,6 +47,20 @@ graph TB
     end
 ```
 
+## 📶 SCAN BAND CONFIGURATION
+
+Scanner band coverage is now centralized in `scan_config.py` and consumed by
+`autonomous_voice_hunter.py` and `voice_hunting_scanner.py`.
+
+- Added coverage:
+  - `EPIRB 406` at `406.028 MHz`
+  - `AIS 1/2` at `161.975 / 162.025 MHz`
+  - Marine VHF `CH16` (`156.800 MHz`) plus `CH09/CH13/CH22A`
+  - Amateur `2m` (`144.800 MHz`) and `70cm` (`433.500 MHz`)
+- Demod defaults:
+  - `nfm` for Marine VHF and amateur bands
+  - `fm` for EPIRB and AIS entries
+
 ## 🧠 S2S VOICE AGENT ARCHITECTURE
 
 ### Multi-Agent System with Handoffs

@@ -18,6 +18,7 @@ import logging
 from scipy import signal
 import queue
 import os
+from scan_config import demod_mode_by_frequency_hz, load_scan_config
 from whisper_transcription import (
     WhisperConfig,
     WhisperDependencyError,
@@ -151,6 +152,18 @@ class AutonomousVoiceHunter:
             'COMPANY_130.0': 130.000e6,      # Airline operations
             'COMPANY_131.8': 131.800e6,      # Airline operations
         }
+
+        # Shared scan configuration additions (EPIRB/AIS/amateur coverage).
+        self.scan_config = load_scan_config()
+        self.demod_modes = demod_mode_by_frequency_hz()
+        for band in self.scan_config["bands"]:
+            autonomous_key = band.get("autonomous_key")
+            if not autonomous_key:
+                continue
+            self.maritime_frequencies.setdefault(
+                autonomous_key,
+                float(band["frequency_mhz"]) * 1e6,
+            )
         
         # Priority levels for intelligent scanning
         self.high_priority_maritime = ['CH16', 'CH13', 'CH09', 'CH22A', 'CH21A']

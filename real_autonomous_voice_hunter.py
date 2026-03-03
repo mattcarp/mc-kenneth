@@ -19,6 +19,7 @@ from scipy import signal
 import queue
 import os
 import random
+from scan_config import demod_mode_by_frequency_hz
 from whisper_transcription import (
     WhisperConfig,
     WhisperDependencyError,
@@ -81,6 +82,7 @@ class RealAutonomousVoiceHunter:
         self.sample_rate = 2000000  # 2 MSPS for RTL-SDR
         self.audio_sample_rate = 48000
         self.demod_audio_sample_rate = 16000
+        self.configured_demod_modes = demod_mode_by_frequency_hz()
         
         # Voice detection settings
         self.voice_threshold = 0.08  # Combined voice score threshold
@@ -130,6 +132,9 @@ class RealAutonomousVoiceHunter:
 
     def _select_demod_mode(self, frequency_hz):
         """Select demodulator from operating band."""
+        configured_mode = self.configured_demod_modes.get(int(round(frequency_hz)))
+        if configured_mode:
+            return configured_mode
         freq_mhz = frequency_hz / 1e6
         if 108.0 <= freq_mhz <= 137.0:
             return "am"
