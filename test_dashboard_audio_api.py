@@ -139,6 +139,7 @@ def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch)
         "extract_stress_features",
         lambda path: types.SimpleNamespace(
             pitch_variance_hz2=320.0,
+            zero_crossing_rate=0.11,
             speech_rate_per_sec=0.8,
             rms_energy=0.12,
             voiced_ratio=0.7,
@@ -153,6 +154,7 @@ def test_stress_endpoint_returns_score_and_features(tmp_path: Path, monkeypatch)
     assert body["file"] == "sample.wav"
     assert body["stress_score"] == 42
     assert body["features"]["pitch_variance_hz2"] == 320.0
+    assert body["features"]["zero_crossing_rate"] == 0.11
 
 
 def test_analysis_stress_endpoint_alias_returns_score(tmp_path: Path, monkeypatch) -> None:
@@ -164,6 +166,7 @@ def test_analysis_stress_endpoint_alias_returns_score(tmp_path: Path, monkeypatc
         "extract_stress_features",
         lambda path: types.SimpleNamespace(
             pitch_variance_hz2=123.0,
+            zero_crossing_rate=0.08,
             speech_rate_per_sec=0.4,
             rms_energy=0.2,
             voiced_ratio=0.6,
@@ -202,6 +205,7 @@ def test_analysis_audio_endpoint_returns_pipeline_payload(tmp_path: Path, monkey
             "stress_score": 91,
             "stress_features": {
                 "pitch_variance_hz2": 742.0,
+                "zero_crossing_rate": 0.14,
                 "speech_rate_per_sec": 1.2,
                 "rms_energy": 0.31,
                 "voiced_ratio": 0.76,

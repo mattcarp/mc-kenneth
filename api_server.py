@@ -816,6 +816,7 @@ def _stress_payload(audio_path: Path) -> Dict[str, Any]:
         "stress_score": stress_score,
         "features": {
             "pitch_variance_hz2": features.pitch_variance_hz2,
+            "zero_crossing_rate": features.zero_crossing_rate,
             "speech_rate_per_sec": features.speech_rate_per_sec,
             "rms_energy": features.rms_energy,
             "voiced_ratio": features.voiced_ratio,
@@ -1299,7 +1300,7 @@ async def transcribe_analysis(
 @app.get("/stress", tags=["analysis"])
 async def stress(file: str = Query(..., description="Audio filename under known capture dirs")):
     """
-    Compute stress score (0-100) from audio pitch variance, energy, and rate.
+    Compute stress score (0-100) from pitch variance, zero-crossing rate, energy, and rate.
     """
     audio_path = _resolve_audio_file(file)
     if audio_path is None:

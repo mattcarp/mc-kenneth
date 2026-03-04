@@ -38,6 +38,7 @@ DEFAULT_FLAGGED_TERMS = (
 @dataclass
 class StressFeatures:
     pitch_variance_hz2: float
+    zero_crossing_rate: float
     speech_rate_per_sec: float
     rms_energy: float
     voiced_ratio: float
@@ -117,14 +118,14 @@ def _estimate_pitch_hz(frame: np.ndarray, sample_rate: int) -> float:
 def extract_stress_features(audio_file_path: str | Path) -> StressFeatures:
     audio, sample_rate = _load_audio_mono(audio_file_path)
     if audio.size == 0:
-        return StressFeatures(0.0, 0.0, 0.0, 0.0)
+        return StressFeatures(0.0, 0.0, 0.0, 0.0, 0.0)
 
     frame_size = max(256, int(0.03 * sample_rate))
     hop_size = max(128, int(0.01 * sample_rate))
     frames = _frame_audio(audio, frame_size, hop_size)
     if frames.size == 0:
         rms = float(np.sqrt(np.mean(audio * audio)))
-        return StressFeatures(0.0, 0.0, rms, 0.0)
+        return StressFeatures(0.0, 0.0, 0.0, rms, 0.0)
 
     frame_rms = np.sqrt(np.mean(frames * frames, axis=1))
     rms_energy = float(np.mean(frame_rms))
@@ -140,6 +141,32 @@ def extract_stress_features(audio_file_path: str | Path) -> StressFeatures:
 
     pitch_variance = float(np.var(voiced_pitches)) if len(voiced_pitches) > 1 else 0.0
     voiced_ratio = float(np.mean(voiced_mask)) if voiced_mask.size else 0.0
+    zcr = float(np.mean(np.abs(np.diff(np.signbit(audio)).astype(np.float32))))
+
+    try:
+        import librosa
+
+        # Prefer librosa for robust pitch + ZCR extraction.
+        f0, _, _ = librosa.pyin(
+            audio,
+            fmin=librosa.note_to_hz("C2"),
+            fmax=librosa.note_to_hz("C7"),
+            sr=sample_rate,
+            frame_length=frame_size,
+            hop_length=hop_size,
+        )
+        voiced_f0 = f0[np.isfinite(f0)] if f0 is not None else np.array([])
+        if voiced_f0.size > 1:
+            pitch_variance = float(np.var(voiced_f0))
+
+        zcr_matrix = librosa.feature.zero_crossing_rate(
+            y=audio, frame_length=frame_size, hop_length=hop_size
+        )
+        if zcr_matrix.size:
+            zcr = float(np.mean(zcr_matrix))
+    except Exception:
+        # Fallback to numpy/autocorrelation-derived features.
+        pass
 
     # Approximate speech rate by counting voiced onsets per second.
     onsets = np.logical_and(voiced_mask[1:], np.logical_not(voiced_mask[:-1]))
@@ -148,6 +175,7 @@ def extract_stress_features(audio_file_path: str | Path) -> StressFeatures:
 
     return StressFeatures(
         pitch_variance_hz2=pitch_variance,
+        zero_crossing_rate=zcr,
         speech_rate_per_sec=speech_rate,
         rms_energy=rms_energy,
         voiced_ratio=voiced_ratio,
@@ -163,19 +191,24 @@ def score_stress(audio_features: StressFeatures | Dict[str, float]) -> int:
     else:
         features = StressFeatures(
             pitch_variance_hz2=float(audio_features.get("pitch_variance_hz2", 0.0)),
+            zero_crossing_rate=float(audio_features.get("zero_crossing_rate", 0.0)),
             speech_rate_per_sec=float(audio_features.get("speech_rate_per_sec", 0.0)),
             rms_energy=float(audio_features.get("rms_energy", 0.0)),
             voiced_ratio=float(audio_features.get("voiced_ratio", 0.0)),
         )
 
-    pitch_component = min(100.0, (features.pitch_variance_hz2 / 1200.0) * 100.0)
+    pitch_component = min(100.0, (features.pitch_variance_hz2 / 1500.0) * 100.0)
+    zcr_component = min(100.0, max(0.0, ((features.zero_crossing_rate - 0.03) / 0.17) * 100.0))
     speech_component = min(
         100.0, max(0.0, ((features.speech_rate_per_sec - 0.3) / 2.5) * 100.0)
     )
     energy_component = min(100.0, (features.rms_energy / 0.25) * 100.0)
 
     raw_score = (
-        0.45 * pitch_component + 0.35 * speech_component + 0.20 * energy_component
+        0.45 * pitch_component
+        + 0.25 * zcr_component
+        + 0.20 * speech_component
+        + 0.10 * energy_component
     )
     bounded = int(round(min(100.0, max(0.0, raw_score))))
     return bounded
@@ -228,6 +261,7 @@ def analyze_audio_file(
         "stress_score": stress_score,
         "stress_features": {
             "pitch_variance_hz2": stress_features.pitch_variance_hz2,
+            "zero_crossing_rate": stress_features.zero_crossing_rate,
             "speech_rate_per_sec": stress_features.speech_rate_per_sec,
             "rms_energy": stress_features.rms_energy,
             "voiced_ratio": stress_features.voiced_ratio,

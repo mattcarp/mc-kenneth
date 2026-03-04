@@ -49,6 +49,7 @@ def test_extract_stress_features_non_negative(tmp_path: Path) -> None:
     features = ai_analysis_pipeline.extract_stress_features(path)
 
     assert features.pitch_variance_hz2 >= 0
+    assert features.zero_crossing_rate >= 0
     assert features.speech_rate_per_sec >= 0
     assert features.rms_energy >= 0
     assert 0 <= features.voiced_ratio <= 1
@@ -57,12 +58,14 @@ def test_extract_stress_features_non_negative(tmp_path: Path) -> None:
 def test_score_stress_supports_dataclass_and_dict() -> None:
     low = ai_analysis_pipeline.StressFeatures(
         pitch_variance_hz2=5.0,
+        zero_crossing_rate=0.02,
         speech_rate_per_sec=0.2,
         rms_energy=0.01,
         voiced_ratio=0.3,
     )
     high = {
         "pitch_variance_hz2": 1800.0,
+        "zero_crossing_rate": 0.20,
         "speech_rate_per_sec": 2.3,
         "rms_energy": 0.4,
         "voiced_ratio": 0.9,

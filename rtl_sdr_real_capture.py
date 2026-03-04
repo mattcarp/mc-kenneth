@@ -102,8 +102,15 @@ class RTLSDRRealCapture:
                     
                     print(f"   🔄 Created {len(iq_data):,} complex samples")
                     
-                    # FM demodulation for audio
-                    audio = self.fm_demodulate(iq_data, sample_rate)
+                    demod_mode = self._select_demod_mode(frequency_mhz)
+                    print(f"   🔧 Demod mode: {demod_mode.upper()}")
+
+                    if demod_mode == "am":
+                        audio = self.am_demodulate(iq_data, sample_rate)
+                    elif demod_mode == "nfm":
+                        audio = self.nfm_demodulate(iq_data, sample_rate)
+                    else:
+                        audio = self.fm_demodulate(iq_data, sample_rate)
                     
                     if audio is not None and len(audio) > 1000:
                         print(f"   🎵 Generated {len(audio):,} audio samples")
@@ -121,7 +128,7 @@ class RTLSDRRealCapture:
                             print("   ⚠️ Low uniqueness - might be noise only")
                             return audio  # Still return it for analysis
                     else:
-                        print("   ❌ FM demodulation failed")
+                        print(f"   ❌ {demod_mode.upper()} demodulation failed")
                         return None
                 else:
                     print("   ❌ No meaningful data captured")
@@ -140,7 +147,42 @@ class RTLSDRRealCapture:
             if Path(temp_iq_file).exists():
                 Path(temp_iq_file).unlink()
             return None
-    
+
+    def _select_demod_mode(self, frequency_mhz):
+        """Select demodulation mode based on frequency band."""
+        if 108.0 <= frequency_mhz <= 137.0:
+            return "am"
+        if 156.0 <= frequency_mhz <= 162.0:
+            return "nfm"
+        return "fm"
+
+    def am_demodulate(self, iq_data, sample_rate):
+        """AM envelope demodulation for aviation VHF."""
+        try:
+            envelope = np.abs(iq_data)
+            audio = envelope - np.mean(envelope)
+
+            audio_rate = 48000
+            decimation = int(sample_rate / audio_rate)
+            if decimation > 1:
+                audio = audio[::decimation]
+
+            if len(audio) == 0:
+                return None
+
+            max_abs = np.max(np.abs(audio))
+            if max_abs > 0:
+                audio = audio / max_abs * 0.7
+
+            return audio
+        except Exception as e:
+            print(f"   ❌ AM demodulation error: {e}")
+            return None
+
+    def nfm_demodulate(self, iq_data, sample_rate):
+        """Narrow-FM demodulation for marine VHF."""
+        return self.fm_demodulate(iq_data, sample_rate)
+
     def fm_demodulate(self, iq_data, sample_rate):
         """Simple FM demodulation"""
         try:
