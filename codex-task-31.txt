@@ -1,0 +1,1 @@
+Implement wideband spectrum scan to auto-detect active frequencies for issue #31. Write tests FIRST (TDD) using pytest or vitest depending on stack, then implement. We need a script/service using RSPdx-R2 that sweeps 80MHz-500MHz (up to hardware limits), logs discovered active frequencies (above a noise floor threshold) and integrates with the main voice hunt scan.

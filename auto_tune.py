@@ -4,14 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import math
 from dataclasses import dataclass
-from typing import Iterable, List, Sequence
+from typing import Callable, Iterable, List, Optional, Sequence
 
 import numpy as np
 
 RSPDX_R2_MIN_HZ = 10_000
 RSPDX_R2_MAX_HZ = 2_000_000_000
+DEFAULT_WIDEBAND_START_HZ = 80_000_000
+DEFAULT_WIDEBAND_STOP_HZ = 500_000_000
+DEFAULT_WIDEBAND_STEP_HZ = 200_000
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,44 @@ def detect_active_frequencies(
             break
 
     return sorted(selected, key=lambda sample: sample.frequency_hz)
+
+
+def detect_wideband_active_frequencies(
+    start_hz: int = DEFAULT_WIDEBAND_START_HZ,
+    stop_hz: int = DEFAULT_WIDEBAND_STOP_HZ,
+    step_hz: int = DEFAULT_WIDEBAND_STEP_HZ,
+    sample_rate_hz: int = 2_000_000,
+    gain_db: float = 40.0,
+    dwell_seconds: float = 0.08,
+    min_snr_db: float = 8.0,
+    min_spacing_hz: int = 100_000,
+    max_results: int = 20,
+    scan_fn: Optional[Callable[..., List[SpectrumSample]]] = None,
+) -> List[SpectrumSample]:
+    """Discover active frequencies with a wideband sweep and noise-floor thresholding."""
+    validated_start, validated_stop, validated_step = validate_scan_range(start_hz, stop_hz, step_hz)
+    scanner = scan_fn or scan_wideband_rspdx_r2
+    samples = scanner(
+        start_hz=validated_start,
+        stop_hz=validated_stop,
+        step_hz=validated_step,
+        sample_rate_hz=sample_rate_hz,
+        gain_db=gain_db,
+        dwell_seconds=dwell_seconds,
+    )
+    active = detect_active_frequencies(
+        samples=samples,
+        min_snr_db=min_snr_db,
+        min_spacing_hz=min_spacing_hz,
+        max_results=max_results,
+    )
+    for sample in active:
+        logger.info(
+            "Active frequency detected: %.3f MHz at %.2f dBFS",
+            sample.frequency_hz / 1e6,
+            sample.power_dbfs,
+        )
+    return active
 
 
 def _mean_power_dbfs(iq_samples: np.ndarray) -> float:
@@ -166,9 +210,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Auto-detect active frequencies with wideband RSPdx-R2 spectrum scan."
     )
-    parser.add_argument("--start-hz", type=int, default=88_000_000, help="Start frequency in Hz.")
-    parser.add_argument("--stop-hz", type=int, default=108_000_000, help="Stop frequency in Hz.")
-    parser.add_argument("--step-hz", type=int, default=200_000, help="Frequency step in Hz.")
+    parser.add_argument("--start-hz", type=int, default=DEFAULT_WIDEBAND_START_HZ, help="Start frequency in Hz.")
+    parser.add_argument("--stop-hz", type=int, default=DEFAULT_WIDEBAND_STOP_HZ, help="Stop frequency in Hz.")
+    parser.add_argument("--step-hz", type=int, default=DEFAULT_WIDEBAND_STEP_HZ, help="Frequency step in Hz.")
     parser.add_argument("--sample-rate-hz", type=int, default=2_000_000, help="Sample rate in Hz.")
     parser.add_argument("--gain-db", type=float, default=40.0, help="Receiver gain in dB.")
     parser.add_argument("--dwell-seconds", type=float, default=0.08, help="Capture dwell per step in seconds.")
@@ -191,16 +235,21 @@ def main() -> int:
             gain_db=args.gain_db,
             dwell_seconds=args.dwell_seconds,
         )
+        active = detect_wideband_active_frequencies(
+            start_hz=start_hz,
+            stop_hz=stop_hz,
+            step_hz=step_hz,
+            sample_rate_hz=args.sample_rate_hz,
+            gain_db=args.gain_db,
+            dwell_seconds=args.dwell_seconds,
+            min_snr_db=args.min_snr_db,
+            min_spacing_hz=args.min_spacing_hz,
+            max_results=args.max_results,
+            scan_fn=lambda **kwargs: samples,
+        )
     except RuntimeError as exc:
         print(f"Scan failed: {exc}")
         return 2
-
-    active = detect_active_frequencies(
-        samples=samples,
-        min_snr_db=args.min_snr_db,
-        min_spacing_hz=args.min_spacing_hz,
-        max_results=args.max_results,
-    )
     _print_scan_report(samples, active)
     return 0
 

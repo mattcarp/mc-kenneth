@@ -13,6 +13,7 @@ from datetime import datetime
 import threading
 import sys
 from scipy import signal
+from auto_tune import detect_wideband_active_frequencies
 from scan_config import demod_mode_by_frequency_hz, load_scan_config
 
 class VoiceHuntingScanner:
@@ -59,6 +60,24 @@ class VoiceHuntingScanner:
         self.sample_duration = 8  # 8-second quick samples
         self.long_sample_duration = 45  # 45-second samples when voice found
         self.voice_threshold = 0.08  # Voice detection threshold (8%)
+
+    def discover_wideband_activity(self):
+        """Run a wideband SDR sweep and return detected active frequencies."""
+        try:
+            return detect_wideband_active_frequencies()
+        except Exception as exc:
+            print(f"⚠️  Wideband auto-detection unavailable: {exc}")
+            return []
+
+    def integrate_discovered_frequencies(self, discovered_samples):
+        """Merge auto-discovered active frequencies into the voice hunt scan list."""
+        existing = set(self.maritime_frequencies.values()) | set(self.aviation_frequencies.values())
+        for sample in discovered_samples:
+            if sample.frequency_hz in existing:
+                continue
+            label = f"AUTO {sample.frequency_hz / 1e6:.3f} MHz"
+            self.maritime_frequencies[label] = float(sample.frequency_hz)
+            existing.add(sample.frequency_hz)
         
     def create_test_sample(self, frequency, freq_name, has_voice=False):
         """Create realistic RF samples - some with voice, some just noise"""
@@ -323,11 +342,18 @@ class VoiceHuntingScanner:
     
     def hunt_for_voices(self):
         """Main voice hunting loop"""
-        
+
         print("🎯 Voice Hunting Scanner - Searching for Human Speech")
         print("   Scanning maritime and aviation frequencies...")
         print("   Will capture long samples when voices detected")
         print("=" * 70)
+
+        discovered = self.discover_wideband_activity()
+        if discovered:
+            self.integrate_discovered_frequencies(discovered)
+            print(f"   🔎 Wideband sweep added {len(discovered)} active frequencies")
+        else:
+            print("   🔎 Wideband sweep found no additional active frequencies")
         
         found_voices = []
         
