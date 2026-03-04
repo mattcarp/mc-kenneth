@@ -193,8 +193,13 @@ def transcribe_audio_file(
         auto_prob = auto_result.get("language_probability")
         auto_prob = float(auto_prob) if isinstance(auto_prob, (int, float)) else 0.0
 
-        should_probe_priority = bool(priority) and (
-            auto_language not in priority or auto_prob < 0.80
+        # openai-whisper doesn't expose language_probability; skip probing to
+        # avoid calling model.transcribe() with a forced language_hint when the
+        # caller has not set cfg.language.
+        should_probe_priority = (
+            bool(priority)
+            and backend != "openai-whisper"
+            and (auto_language not in priority or auto_prob < 0.80)
         )
 
         if should_probe_priority:

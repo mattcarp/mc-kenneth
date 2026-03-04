@@ -182,7 +182,21 @@ class RealAutonomousVoiceHunter:
             return np.array([], dtype=np.float32)
         if self.sample_rate == self.demod_audio_sample_rate:
             return audio.astype(np.float32)
-        resampled = signal.resample_poly(audio, self.demod_audio_sample_rate, self.sample_rate)
+        resample_poly = getattr(signal, "resample_poly", None)
+        if resample_poly is None:
+            # Fallback when scipy.signal stub doesn't have resample_poly
+            from math import gcd
+            g = gcd(int(self.demod_audio_sample_rate), int(self.sample_rate))
+            up = int(self.demod_audio_sample_rate) // g
+            down = int(self.sample_rate) // g
+            n_out = int(round(len(audio) * up / down))
+            resampled = np.interp(
+                np.linspace(0, len(audio) - 1, n_out),
+                np.arange(len(audio)),
+                audio,
+            )
+        else:
+            resampled = resample_poly(audio, self.demod_audio_sample_rate, self.sample_rate)
         return resampled.astype(np.float32)
 
     def demodulate_am(self, iq_samples):

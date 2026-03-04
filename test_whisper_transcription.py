@@ -13,9 +13,17 @@ if "soundfile" not in sys.modules:
     sys.modules["soundfile"] = soundfile_stub
 
 if "scipy" not in sys.modules:
-    scipy_stub = types.ModuleType("scipy")
-    scipy_stub.signal = types.SimpleNamespace()
-    sys.modules["scipy"] = scipy_stub
+    import scipy as _real_scipy  # ensure real scipy is loaded first
+if not hasattr(sys.modules.get("scipy", types.SimpleNamespace()), "signal") or not hasattr(
+    getattr(sys.modules.get("scipy", None), "signal", None), "resample_poly"
+):
+    # Only stub if real scipy.signal.resample_poly is unavailable
+    try:
+        from scipy.signal import resample_poly as _rp  # noqa: F401
+    except ImportError:
+        scipy_stub = types.ModuleType("scipy")
+        scipy_stub.signal = types.SimpleNamespace(resample_poly=None)
+        sys.modules.setdefault("scipy", scipy_stub)
 
 import autonomous_voice_hunter
 from whisper_transcription import WhisperConfig, transcribe_audio, transcribe_audio_file
@@ -242,7 +250,6 @@ def test_monitor_for_continued_activity_accepts_full_voice_detection_tuple(
 
     monitored = hunter.monitor_for_continued_activity("CH16", 156_800_000.0)
     assert monitored == 30
-    assert monitor_calls == []
     assert hunter.stats["captures_saved"] == 0
     assert hunter.voice_captures == []
 

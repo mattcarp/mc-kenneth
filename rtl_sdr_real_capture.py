@@ -173,20 +173,34 @@ class RTLSDRRealCapture:
     def am_demodulate(self, iq_data, sample_rate):
         """AM envelope demodulation for aviation VHF."""
         try:
+            from math import gcd
             envelope = np.abs(iq_data)
             audio = envelope - np.mean(envelope)
 
             audio_rate = 48000
-            decimation = int(sample_rate / audio_rate)
-            if decimation > 1:
-                audio = audio[::decimation]
+            if int(sample_rate) != audio_rate:
+                # Prefer rational resampling for accurate output length
+                try:
+                    import scipy.signal as _scipy_signal
+                    resample_poly = getattr(_scipy_signal, "resample_poly", None)
+                    if resample_poly is not None:
+                        g = gcd(audio_rate, int(sample_rate))
+                        up = audio_rate // g
+                        down = int(sample_rate) // g
+                        audio = resample_poly(audio, up, down)
+                    else:
+                        raise ImportError("resample_poly not available")
+                except (ImportError, AttributeError):
+                    # Fallback: simple integer decimation
+                    decimation = max(1, int(sample_rate / audio_rate))
+                    audio = audio[::decimation]
 
             if len(audio) == 0:
                 return None
 
             max_abs = np.max(np.abs(audio))
             if max_abs > 0:
-                audio = audio / max_abs * 0.7
+                audio = (audio / max_abs * 0.7).astype(np.float32)
 
             return audio
         except Exception as e:
