@@ -25,6 +25,46 @@ receivers = {
                 "start_mod": "am",
                 "waterfall_auto_level_margin": 10
             },
+            "AIS_1": {
+                "name": "AIS Channel 1",
+                "center_freq": 161975000,
+                "samp_rate": 2400000,
+                "start_freq": 161975000,
+                "start_mod": "nfm",
+                "waterfall_auto_level_margin": 10
+            },
+            "AIS_2": {
+                "name": "AIS Channel 2",
+                "center_freq": 162025000,
+                "samp_rate": 2400000,
+                "start_freq": 162025000,
+                "start_mod": "nfm",
+                "waterfall_auto_level_margin": 10
+            },
+            "EPIRB_406": {
+                "name": "EPIRB 406 MHz",
+                "center_freq": 406028000,
+                "samp_rate": 2400000,
+                "start_freq": 406028000,
+                "start_mod": "nfm",
+                "waterfall_auto_level_margin": 10
+            },
+            "Amateur_2m_Calling": {
+                "name": "Amateur 2m Calling",
+                "center_freq": 146520000,
+                "samp_rate": 2400000,
+                "start_freq": 146520000,
+                "start_mod": "nfm",
+                "waterfall_auto_level_margin": 10
+            },
+            "Amateur_70cm_Calling": {
+                "name": "Amateur 70cm Calling",
+                "center_freq": 446000000,
+                "samp_rate": 2400000,
+                "start_freq": 446000000,
+                "start_mod": "nfm",
+                "waterfall_auto_level_margin": 10
+            },
             "Malta_FM": {
                 "name": "Malta FM Radio",
                 "center_freq": 103700000,  # Magic Malta

@@ -9,21 +9,21 @@ SCAN_BANDS: List[Dict[str, object]] = [
     {
         "name": "EPIRB 406",
         "frequency_mhz": 406.028,
-        "demod_mode": "fm",
+        "demod_mode": "nfm",
         "autonomous_key": "EPIRB_406.028",
         "voice_key": "EPIRB 406",
     },
     {
         "name": "AIS 1",
         "frequency_mhz": 161.975,
-        "demod_mode": "fm",
+        "demod_mode": "nfm",
         "autonomous_key": "AIS_161.975",
         "voice_key": "AIS 1",
     },
     {
         "name": "AIS 2",
         "frequency_mhz": 162.025,
-        "demod_mode": "fm",
+        "demod_mode": "nfm",
         "autonomous_key": "AIS_162.025",
         "voice_key": "AIS 2",
     },
@@ -56,18 +56,39 @@ SCAN_BANDS: List[Dict[str, object]] = [
         "voice_key": "CH22A Coast Guard",
     },
     {
-        "name": "Amateur 2m",
+        "name": "Amateur 6m Calling",
+        "frequency_mhz": 52.525,
+        "demod_mode": "nfm",
+        "autonomous_key": "HAM_6M_52.525",
+        "voice_key": "Amateur 6m Calling",
+    },
+    {
+        "name": "Amateur 2m Packet",
         "frequency_mhz": 144.800,
         "demod_mode": "nfm",
         "autonomous_key": "HAM_2M_144.8",
-        "voice_key": "Amateur 2m",
+        "voice_key": "Amateur 2m Packet",
     },
     {
-        "name": "Amateur 70cm",
-        "frequency_mhz": 433.500,
+        "name": "Amateur 2m Calling",
+        "frequency_mhz": 146.520,
         "demod_mode": "nfm",
-        "autonomous_key": "HAM_70CM_433.5",
-        "voice_key": "Amateur 70cm",
+        "autonomous_key": "HAM_2M_146.52",
+        "voice_key": "Amateur 2m Calling",
+    },
+    {
+        "name": "Amateur 1.25m Calling",
+        "frequency_mhz": 223.500,
+        "demod_mode": "nfm",
+        "autonomous_key": "HAM_125CM_223.5",
+        "voice_key": "Amateur 1.25m Calling",
+    },
+    {
+        "name": "Amateur 70cm Calling",
+        "frequency_mhz": 446.000,
+        "demod_mode": "nfm",
+        "autonomous_key": "HAM_70CM_446.0",
+        "voice_key": "Amateur 70cm Calling",
     },
 ]
 
@@ -83,4 +104,3 @@ def demod_mode_by_frequency_hz() -> Dict[int, str]:
         int(round(float(entry["frequency_mhz"]) * 1e6)): str(entry["demod_mode"])
         for entry in SCAN_BANDS
     }
-

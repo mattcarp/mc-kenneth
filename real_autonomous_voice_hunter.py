@@ -90,6 +90,10 @@ class RealAutonomousVoiceHunter:
         # (e.g., Malta Approach at 119.45 MHz with ~13.1% voice ratio and strong dynamic range).
         self.voice_ratio_threshold = min(float(os.getenv("VOICE_RATIO_THRESHOLD", "0.08")), 0.08)
         self.lock_duration = 60  # Lock for 60 seconds when voice detected
+        self.logger.info(
+            f"🎚️ Voice gates configured: score>{self.voice_threshold:.3f}, ratio>={self.voice_ratio_threshold:.3f}"
+        )
+        self.logger.info("✈️ Aviation band demodulation policy: 108-137 MHz -> AM")
         
         # Statistics
         self.total_scans = 0
@@ -113,6 +117,28 @@ class RealAutonomousVoiceHunter:
         )
         self.logger = logging.getLogger(__name__)
 
+    def _capture_metadata_path(self, audio_file: Path) -> Path:
+        return audio_file.with_suffix(".metadata.json")
+
+    def _write_wav_with_metadata(self, audio_file: Path, audio_data, sample_rate: int, metadata: dict) -> None:
+        """Persist WAV plus sidecar metadata for downstream forensics."""
+        sf.write(str(audio_file), audio_data, sample_rate)
+        merged = dict(metadata)
+        merged["audio_file"] = str(audio_file)
+        merged["sample_rate_hz"] = int(sample_rate)
+        merged["samples"] = int(len(audio_data))
+        merged["duration_sec"] = float(len(audio_data) / sample_rate) if sample_rate > 0 else 0.0
+        merged["saved_at_utc"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        self._capture_metadata_path(audio_file).write_text(
+            json.dumps(merged, indent=2),
+            encoding="utf-8",
+        )
+
+    def _move_capture_metadata(self, old_audio_file: Path, new_audio_file: Path) -> None:
+        old_metadata = self._capture_metadata_path(old_audio_file)
+        if old_metadata.exists():
+            old_metadata.rename(self._capture_metadata_path(new_audio_file))
+
     def _auto_transcribe_capture(self, audio_file: Path, frequency_name: str):
         """Transcribe saved captures with faster-whisper when available."""
         try:
@@ -130,15 +156,24 @@ class RealAutonomousVoiceHunter:
             self.logger.warning(f"   ⚠️  Transcription failed for {frequency_name}: {exc}")
         return None
 
+    def _detect_frequency_band(self, frequency_hz):
+        """Classify frequency into known RF operating bands."""
+        freq_mhz = frequency_hz / 1e6
+        if 108.0 <= freq_mhz <= 137.0:
+            return "aviation"
+        if 156.0 <= freq_mhz <= 162.0:
+            return "maritime"
+        return "other"
+
     def _select_demod_mode(self, frequency_hz):
         """Select demodulator from operating band."""
         configured_mode = self.configured_demod_modes.get(int(round(frequency_hz)))
         if configured_mode:
             return configured_mode
-        freq_mhz = frequency_hz / 1e6
-        if 108.0 <= freq_mhz <= 137.0:
+        band = self._detect_frequency_band(frequency_hz)
+        if band == "aviation":
             return "am"
-        if 156.0 <= freq_mhz <= 162.0:
+        if band == "maritime":
             return "nfm"
         return "fm"
 
@@ -237,7 +272,17 @@ class RealAutonomousVoiceHunter:
                         
                         # Save real RF audio
                         audio_file = self.session_dir / f"REAL_RF_{frequency_name.replace(' ', '_')}_{timestamp}.wav"
-                        sf.write(str(audio_file), audio_demod, self.demod_audio_sample_rate)
+                        self._write_wav_with_metadata(
+                            audio_file,
+                            audio_demod,
+                            self.demod_audio_sample_rate,
+                            {
+                                "source_type": "REAL_RF",
+                                "frequency_name": frequency_name,
+                                "frequency_hz": int(round(frequency_hz)),
+                                "demod_mode": demod_mode,
+                            },
+                        )
                         
                         # Clean up IQ file
                         os.unlink(iq_file)
@@ -476,6 +521,10 @@ class RealAutonomousVoiceHunter:
         """Scan a single frequency for voice activity"""
         
         self.total_scans += 1
+        demod_mode = self._select_demod_mode(frequency_hz)
+        self.logger.info(
+            f"📡 Scan config: {frequency_name} ({frequency_hz/1e6:.3f} MHz) demod={demod_mode}"
+        )
         
         # Try real RF capture first
         audio_file = self.attempt_real_rf_capture(frequency_name, frequency_hz, duration)
@@ -496,7 +545,17 @@ class RealAutonomousVoiceHunter:
             # Save fallback audio
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             audio_file = self.session_dir / f"SIM_{frequency_name.replace(' ', '_')}_{timestamp}.wav"
-            sf.write(str(audio_file), audio_signal, self.audio_sample_rate)
+            self._write_wav_with_metadata(
+                audio_file,
+                audio_signal,
+                self.audio_sample_rate,
+                {
+                    "source_type": "SIMULATION",
+                    "frequency_name": frequency_name,
+                    "frequency_hz": int(round(frequency_hz)),
+                    "demod_mode": self._select_demod_mode(frequency_hz),
+                },
+            )
             source_type = "SIMULATION"
         
         # Detect voice activity
@@ -517,6 +576,9 @@ class RealAutonomousVoiceHunter:
             # Remove non-voice files to save space
             if Path(audio_file).exists():
                 os.unlink(audio_file)
+            metadata_path = self._capture_metadata_path(Path(audio_file))
+            if metadata_path.exists():
+                metadata_path.unlink()
             return False, None, voice_score
     
     def frequency_lock_mode(self, frequency_name, frequency_hz, initial_file):
@@ -553,8 +615,11 @@ class RealAutonomousVoiceHunter:
                 self.logger.info(f"   🎙️  Continued voice activity detected (score: {voice_score:.3f})")
                 
                 if capture_file:
+                    old_audio_file = Path(capture_file)
                     new_name = str(capture_file).replace('.wav', f'_continued_{continued_captures:02d}.wav')
-                    Path(capture_file).rename(new_name)
+                    new_audio_file = Path(new_name)
+                    old_audio_file.rename(new_audio_file)
+                    self._move_capture_metadata(old_audio_file, new_audio_file)
                     self.logger.info(f"   📁 Additional capture: {Path(new_name).name}")
                     self._auto_transcribe_capture(Path(new_name), frequency_name)
             else:

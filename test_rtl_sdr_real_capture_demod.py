@@ -20,6 +20,19 @@ def test_select_demod_mode_uses_am_for_aviation_band() -> None:
 def test_select_demod_mode_uses_nfm_for_maritime_band() -> None:
     capture = _capture()
     assert capture._select_demod_mode(156.8) == "nfm"
+    assert capture._select_demod_mode(161.975) == "nfm"
+    assert capture._select_demod_mode(162.025) == "nfm"
+    assert capture._select_demod_mode(406.028) == "nfm"
+    assert capture._select_demod_mode(146.52) == "nfm"
+
+
+def test_detect_frequency_band_boundaries() -> None:
+    capture = _capture()
+    assert capture._detect_frequency_band(107.999) == "other"
+    assert capture._detect_frequency_band(108.0) == "aviation"
+    assert capture._detect_frequency_band(137.0) == "aviation"
+    assert capture._detect_frequency_band(137.001) == "other"
+    assert capture._detect_frequency_band(156.8) == "maritime"
 
 
 def test_am_demodulation_decimates_to_48khz() -> None:

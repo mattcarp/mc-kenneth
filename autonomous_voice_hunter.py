@@ -226,6 +226,23 @@ class AutonomousVoiceHunter:
         )
         self.logger = logging.getLogger(__name__)
 
+    def _capture_metadata_path(self, audio_file: Path) -> Path:
+        return audio_file.with_suffix(".metadata.json")
+
+    def _write_wav_with_metadata(self, audio_file: Path, audio_data, sample_rate: int, metadata: dict) -> None:
+        """Persist WAV plus forensic metadata sidecar."""
+        sf.write(audio_file, audio_data, sample_rate)
+        merged = dict(metadata)
+        merged["audio_file"] = str(audio_file)
+        merged["sample_rate_hz"] = int(sample_rate)
+        merged["samples"] = int(len(audio_data))
+        merged["duration_sec"] = float(len(audio_data) / sample_rate) if sample_rate > 0 else 0.0
+        merged["saved_at_utc"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+        self._capture_metadata_path(audio_file).write_text(
+            json.dumps(merged, indent=2),
+            encoding="utf-8",
+        )
+
     def _save_transcription_artifacts(self, audio_file: Path, transcript: dict):
         """Persist text + JSON transcription outputs next to the session captures."""
         transcript_stem = audio_file.stem
@@ -555,7 +572,19 @@ class AutonomousVoiceHunter:
                 )
                 return None, 0
 
-            sf.write(filepath, extended_audio, sample_rate)
+            demod_mode = self.demod_modes.get(int(round(frequency_hz)), "nfm")
+            self._write_wav_with_metadata(
+                filepath,
+                extended_audio,
+                sample_rate,
+                {
+                    "source_type": "SIMULATION",
+                    "frequency_name": freq_name,
+                    "frequency_hz": int(round(frequency_hz)),
+                    "demod_mode": demod_mode,
+                    "capture_type": "extended",
+                },
+            )
             
             # Track statistics
             if 156 <= freq_mhz <= 158:
@@ -610,7 +639,9 @@ class AutonomousVoiceHunter:
             monitor_sample, _ = self.create_rf_sample(frequency_hz, 10)
             sample_rate = 48000
             
-            has_voice, voice_score = self.detect_voice_activity(monitor_sample, sample_rate)
+            has_voice, voice_score, _, _ = self.detect_voice_activity(
+                monitor_sample, sample_rate, frequency_hz
+            )
             
             if has_voice:
                 self.logger.info(f"   🎙️  Continued voice activity detected (score: {voice_score:.3f})")
@@ -623,7 +654,19 @@ class AutonomousVoiceHunter:
                     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
                     additional_filename = f"VOICE_CONTINUED_{freq_name}_{frequency_hz/1e6:.3f}MHz_{timestamp_str}.wav"
                     additional_filepath = self.session_dir / additional_filename
-                    sf.write(additional_filepath, monitor_sample, sample_rate)
+                    demod_mode = self.demod_modes.get(int(round(frequency_hz)), "nfm")
+                    self._write_wav_with_metadata(
+                        additional_filepath,
+                        monitor_sample,
+                        sample_rate,
+                        {
+                            "source_type": "SIMULATION",
+                            "frequency_name": freq_name,
+                            "frequency_hz": int(round(frequency_hz)),
+                            "demod_mode": demod_mode,
+                            "capture_type": "continued",
+                        },
+                    )
 
                     self.logger.info(f"   📁 Additional capture: {additional_filename}")
                     self._auto_transcribe_capture(additional_filepath, freq_name, frequency_hz)

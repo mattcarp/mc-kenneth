@@ -11,10 +11,12 @@ import time
 from pathlib import Path
 from datetime import datetime
 import os
+from scan_config import demod_mode_by_frequency_hz
 
 class RTLSDRRealCapture:
     def __init__(self):
         self.device_available = self.check_rtl_sdr()
+        self.configured_demod_modes = demod_mode_by_frequency_hz()
     
     def check_rtl_sdr(self):
         """Check if rtl_sdr tool is available"""
@@ -148,11 +150,23 @@ class RTLSDRRealCapture:
                 Path(temp_iq_file).unlink()
             return None
 
-    def _select_demod_mode(self, frequency_mhz):
-        """Select demodulation mode based on frequency band."""
+    def _detect_frequency_band(self, frequency_mhz):
+        """Classify frequency into known RF operating bands."""
         if 108.0 <= frequency_mhz <= 137.0:
-            return "am"
+            return "aviation"
         if 156.0 <= frequency_mhz <= 162.0:
+            return "maritime"
+        return "other"
+
+    def _select_demod_mode(self, frequency_mhz):
+        """Select demodulation mode based on detected frequency band."""
+        configured = self.configured_demod_modes.get(int(round(frequency_mhz * 1e6)))
+        if configured:
+            return configured
+        band = self._detect_frequency_band(frequency_mhz)
+        if band == "aviation":
+            return "am"
+        if band == "maritime":
             return "nfm"
         return "fm"
 

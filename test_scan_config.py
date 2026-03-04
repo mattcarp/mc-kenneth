@@ -13,15 +13,18 @@ class ScanConfigTest(unittest.TestCase):
         }
 
         required = [
-            ("EPIRB 406", 406.028, "fm"),
-            ("AIS 1", 161.975, "fm"),
-            ("AIS 2", 162.025, "fm"),
+            ("EPIRB 406", 406.028, "nfm"),
+            ("AIS 1", 161.975, "nfm"),
+            ("AIS 2", 162.025, "nfm"),
             ("Marine CH16", 156.800, "nfm"),
             ("Marine CH09", 156.450, "nfm"),
             ("Marine CH13", 156.650, "nfm"),
             ("Marine CH22A", 157.100, "nfm"),
-            ("Amateur 2m", 144.800, "nfm"),
-            ("Amateur 70cm", 433.500, "nfm"),
+            ("Amateur 6m Calling", 52.525, "nfm"),
+            ("Amateur 2m Packet", 144.800, "nfm"),
+            ("Amateur 2m Calling", 146.520, "nfm"),
+            ("Amateur 1.25m Calling", 223.500, "nfm"),
+            ("Amateur 70cm Calling", 446.000, "nfm"),
         ]
 
         for name, freq_mhz, mode in required:

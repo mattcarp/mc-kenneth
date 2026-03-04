@@ -218,6 +218,30 @@ def test_extended_capture_discards_noise_only_samples_before_write(
     assert capture_path is None
     assert capture_duration == 0
     assert write_calls == []
+
+
+def test_monitor_for_continued_activity_accepts_full_voice_detection_tuple(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    hunter = autonomous_voice_hunter.AutonomousVoiceHunter(session_name="test-session")
+
+    silent = np.zeros(48_000, dtype=np.float32)
+    monkeypatch.setattr(hunter, "create_rf_sample", lambda frequency_hz, duration: (silent, False))
+    monkeypatch.setattr(
+        hunter,
+        "detect_voice_activity",
+        lambda audio, sample_rate, frequency_hz=None: (
+            False,
+            0.0,
+            0.0,
+            hunter._voice_ratio_threshold_for_frequency(frequency_hz),
+        ),
+    )
+    monkeypatch.setattr(autonomous_voice_hunter.time, "sleep", lambda *_args, **_kwargs: None)
+
+    monitored = hunter.monitor_for_continued_activity("CH16", 156_800_000.0)
+    assert monitored == 30
     assert monitor_calls == []
     assert hunter.stats["captures_saved"] == 0
     assert hunter.voice_captures == []
