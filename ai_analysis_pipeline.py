@@ -197,7 +197,11 @@ def score_stress(audio_features: StressFeatures | Dict[str, float]) -> int:
             voiced_ratio=float(audio_features.get("voiced_ratio", 0.0)),
         )
 
-    pitch_component = min(100.0, (features.pitch_variance_hz2 / 1500.0) * 100.0)
+    # Normalize pitch variance: typical stressed speech variance is 1–10 Hz²
+    # (librosa pyin returns Hz values; variance of a 2-octave sweep ≈ 2–8 Hz²).
+    # The previous normalizer (/1500) was calibrated for raw autocorrelation
+    # estimates and made this component near-zero for librosa outputs.
+    pitch_component = min(100.0, (features.pitch_variance_hz2 / 6.0) * 100.0)
     zcr_component = min(100.0, max(0.0, ((features.zero_crossing_rate - 0.03) / 0.17) * 100.0))
     speech_component = min(
         100.0, max(0.0, ((features.speech_rate_per_sec - 0.3) / 2.5) * 100.0)
