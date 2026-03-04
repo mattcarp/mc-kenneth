@@ -14,6 +14,7 @@ import numpy as np
 
 from whisper_transcription import WhisperConfig, transcribe_audio_file
 from alert_dispatcher import send_stress_alert
+from keyword_threat_detection import detect_threats
 
 HIGH_STRESS_THRESHOLD = 70
 
@@ -240,6 +241,21 @@ def classify_threat_keywords(
     }
 
 
+def analyze_transmission(
+    transcription_dict: Dict[str, object],
+    frequency_hz: float | None = None,
+) -> Dict[str, object]:
+    return detect_threats(transcription_dict, frequency_hz=frequency_hz)
+
+
+def analyse_transmission(
+    transcription_dict: Dict[str, object],
+    frequency_hz: float | None = None,
+) -> Dict[str, object]:
+    # Compatibility alias for callers using British spelling.
+    return analyze_transmission(transcription_dict, frequency_hz=frequency_hz)
+
+
 def analyze_audio_file(
     audio_file_path: str | Path,
     whisper_config: Optional[WhisperConfig] = None,
@@ -251,6 +267,7 @@ def analyze_audio_file(
     stress_features = extract_stress_features(path)
     stress_score = score_stress(stress_features)
     keyword_result = classify_threat_keywords(transcript_text, flagged_terms)
+    transmission_alert = analyze_transmission(transcript, frequency_hz=None)
     if stress_score > HIGH_STRESS_THRESHOLD:
         send_stress_alert(
             stress_score=stress_score,
@@ -271,6 +288,7 @@ def analyze_audio_file(
             "voiced_ratio": stress_features.voiced_ratio,
         },
         "threat_classification": keyword_result,
+        "alert": transmission_alert,
     }
 
 
@@ -299,6 +317,8 @@ __all__ = [
     "StressFeatures",
     "analyze_audio_directory",
     "analyze_audio_file",
+    "analyze_transmission",
+    "analyse_transmission",
     "classify_threat_keywords",
     "compute_stress_score",
     "extract_stress_features",
