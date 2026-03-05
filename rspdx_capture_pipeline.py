@@ -248,6 +248,12 @@ def update_status(output_dir: Path, status: Dict[str, Any]) -> None:
         json.dump(status, handle, indent=2)
 
 
+def write_validation(output_dir: Path, validation: Dict[str, Any]) -> None:
+    validation_path = output_dir / "validation.json"
+    with validation_path.open("w", encoding="utf-8") as handle:
+        json.dump(validation, handle, indent=2)
+
+
 def load_recent_captures(output_dir: Path, limit: int = 50) -> List[Dict[str, Any]]:
     log_path = output_dir / "captures.jsonl"
     if not log_path.exists():
@@ -304,6 +310,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     status: Dict[str, Any] = {
         "pipeline": "rspdx_capture_pipeline",
+        "state": "starting",
         "started_at": isoformat(utc_now()),
         "frequency_hz": config.frequency_hz,
         "sample_rate": config.sample_rate,
@@ -322,76 +329,113 @@ def run_pipeline(args: argparse.Namespace) -> int:
     except Exception as exc:
         logger.error("Failed to open SDR device: %s", exc)
         status["errors"] += 1
+        status["state"] = "error"
+        status["stopped_at"] = isoformat(utc_now())
+        status["updated_at"] = status["stopped_at"]
         status["last_error"] = str(exc)
         update_status(output_dir, status)
         return 2
 
-    setup_device(sdr, config, logger)
-    rx_stream = setup_stream(sdr, config, logger)
+    rx_stream = None
+    try:
+        setup_device(sdr, config, logger)
+        rx_stream = setup_stream(sdr, config, logger)
+        status["state"] = "running"
+        status["updated_at"] = isoformat(utc_now())
+        update_status(output_dir, status)
 
-    stop_requested = False
+        stop_requested = False
 
-    def handle_stop(signum, frame):
-        nonlocal stop_requested
-        logger.info("Received signal %s, stopping after current capture", signum)
-        stop_requested = True
+        def handle_stop(signum, frame):
+            nonlocal stop_requested
+            logger.info("Received signal %s, stopping after current capture", signum)
+            stop_requested = True
 
-    signal.signal(signal.SIGINT, handle_stop)
-    signal.signal(signal.SIGTERM, handle_stop)
+        signal.signal(signal.SIGINT, handle_stop)
+        signal.signal(signal.SIGTERM, handle_stop)
 
-    capture_index = 1
-    max_captures = config.max_captures
+        capture_index = 1
+        max_captures = config.max_captures
 
-    while True:
-        try:
-            metadata = capture_once(sdr, rx_stream, config, output_dir, logger, capture_index)
-            append_capture_log(output_dir, metadata)
-            captures = load_recent_captures(output_dir)
-            write_recent_captures(output_dir, captures)
+        while True:
+            try:
+                metadata = capture_once(sdr, rx_stream, config, output_dir, logger, capture_index)
+                append_capture_log(output_dir, metadata)
+                captures = load_recent_captures(output_dir)
+                write_recent_captures(output_dir, captures)
 
-            status["last_capture"] = metadata
-            status["captures_count"] = status.get("captures_count", 0) + 1
-            status["updated_at"] = isoformat(utc_now())
-            update_status(output_dir, status)
-
-            logger.info(
-                "Capture %s complete | avg power %.2f dBFS | nonzero %.3f",
-                metadata["id"],
-                metadata["average_power_dbfs"],
-                metadata["nonzero_ratio"],
-            )
-
-            if args.validate:
-                validation = validate_capture(metadata)
-                status["validation"] = validation
+                status["last_capture"] = metadata
+                status["captures_count"] = status.get("captures_count", 0) + 1
+                status["updated_at"] = isoformat(utc_now())
                 update_status(output_dir, status)
-                if validation["passed"]:
-                    logger.info("Validation PASSED: %s", validation["notes"])
-                    return 0
-                logger.warning("Validation FAILED: %s", validation["notes"])
-                return 1
 
-        except Exception as exc:
-            status["errors"] = status.get("errors", 0) + 1
-            status["last_error"] = str(exc)
-            status["updated_at"] = isoformat(utc_now())
-            update_status(output_dir, status)
-            logger.exception("Capture failed: %s", exc)
-            if args.validate:
-                return 1
+                logger.info(
+                    "Capture %s complete | avg power %.2f dBFS | nonzero %.3f",
+                    metadata["id"],
+                    metadata["average_power_dbfs"],
+                    metadata["nonzero_ratio"],
+                )
 
-        if stop_requested:
-            break
+                if args.validate:
+                    validation = validate_capture(metadata)
+                    validation["capture_id"] = metadata.get("id")
+                    status["validation"] = validation
+                    write_validation(output_dir, validation)
+                    status["updated_at"] = isoformat(utc_now())
+                    update_status(output_dir, status)
+                    if validation["passed"]:
+                        logger.info("Validation PASSED: %s", validation["notes"])
+                        status["state"] = "stopped"
+                        status["stopped_at"] = isoformat(utc_now())
+                        status["updated_at"] = status["stopped_at"]
+                        update_status(output_dir, status)
+                        return 0
+                    logger.warning("Validation FAILED: %s", validation["notes"])
+                    status["state"] = "error"
+                    status["stopped_at"] = isoformat(utc_now())
+                    status["updated_at"] = status["stopped_at"]
+                    update_status(output_dir, status)
+                    return 1
 
-        capture_index += 1
-        if max_captures and capture_index > max_captures:
-            break
+            except Exception as exc:
+                status["errors"] = status.get("errors", 0) + 1
+                status["last_error"] = str(exc)
+                status["updated_at"] = isoformat(utc_now())
+                update_status(output_dir, status)
+                logger.exception("Capture failed: %s", exc)
+                if args.validate:
+                    status["state"] = "error"
+                    status["stopped_at"] = isoformat(utc_now())
+                    status["updated_at"] = status["stopped_at"]
+                    update_status(output_dir, status)
+                    return 1
 
-        if config.capture_interval_sec > 0:
-            time.sleep(config.capture_interval_sec)
+            if stop_requested:
+                break
 
-    logger.info("Pipeline stopped. Captures saved: %s", status.get("captures_count"))
-    return 0
+            capture_index += 1
+            if max_captures and capture_index > max_captures:
+                break
+
+            if config.capture_interval_sec > 0:
+                time.sleep(config.capture_interval_sec)
+
+        status["state"] = "stopped"
+        status["stopped_at"] = isoformat(utc_now())
+        status["updated_at"] = status["stopped_at"]
+        update_status(output_dir, status)
+        logger.info("Pipeline stopped. Captures saved: %s", status.get("captures_count"))
+        return 0
+    finally:
+        if rx_stream is not None:
+            try:
+                sdr.deactivateStream(rx_stream)
+            except Exception as exc:
+                logger.warning("Failed to deactivate stream cleanly: %s", exc)
+            try:
+                sdr.closeStream(rx_stream)
+            except Exception as exc:
+                logger.warning("Failed to close stream cleanly: %s", exc)
 
 
 def build_parser() -> argparse.ArgumentParser:

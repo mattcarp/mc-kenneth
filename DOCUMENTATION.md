@@ -169,6 +169,7 @@ python3 rspdx_capture_pipeline.py --max-captures 0 --interval 1
 - `rf_captures/rspdx_pipeline/` stores raw IQ files (`*.cf32`), per-capture metadata JSON, and logs.
 - `rf_captures/rspdx_pipeline/status.json` tracks latest pipeline status for monitoring.
 - `rf_captures/rspdx_pipeline/captures_recent.json` holds recent captures for the dashboard.
+- `rf_captures/rspdx_pipeline/validation.json` stores the latest validation result (when run with `--validate`).
 
 ### Monitoring Dashboard
 ```bash

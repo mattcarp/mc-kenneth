@@ -219,8 +219,16 @@
             <div class="value">${status.captures_count ?? 0}</div>
           </div>
           <div class="metric">
+            <div class="label">State</div>
+            <div class="value">${status.state || "-"}</div>
+          </div>
+          <div class="metric">
             <div class="label">Last Power</div>
             <div class="value">${status.last_capture?.average_power_dbfs ?? "-"} dBFS</div>
+          </div>
+          <div class="metric">
+            <div class="label">Last Error</div>
+            <div class="value ${status.last_error ? "bad" : ""}">${status.last_error || "-"}</div>
           </div>
           <div class="metric">
             <div class="label">Validation</div>
