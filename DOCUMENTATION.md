@@ -153,6 +153,29 @@ npm run test:core
 - ISS: 145.8 MHz
 - NOAA Weather: 162.4-162.55 MHz
 
+## 📡 RSPdx Capture Pipeline
+
+### Quick Start
+```bash
+python3 rspdx_capture_pipeline.py --validate
+```
+
+### Continuous Capture
+```bash
+python3 rspdx_capture_pipeline.py --max-captures 0 --interval 1
+```
+
+### Outputs
+- `rf_captures/rspdx_pipeline/` stores raw IQ files (`*.cf32`), per-capture metadata JSON, and logs.
+- `rf_captures/rspdx_pipeline/status.json` tracks latest pipeline status for monitoring.
+- `rf_captures/rspdx_pipeline/captures_recent.json` holds recent captures for the dashboard.
+
+### Monitoring Dashboard
+```bash
+python3 -m http.server 8000
+```
+Open `dashboard/sdr_capture_status.html` while the server is running to view status and recent captures.
+
 ## 🚢 Kenneth Maritime Intelligence
 
 ### Mission

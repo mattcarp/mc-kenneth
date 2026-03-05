@@ -1,0 +1,16 @@
+{
+  "frequency_hz": 156800000,
+  "sample_rate": 2000000,
+  "gain": 40.0,
+  "duration_sec": 10.0,
+  "bandwidth": null,
+  "device_args": {
+    "driver": "sdrplay"
+  },
+  "channel": 0,
+  "sample_format": "CF32",
+  "stream_timeout_sec": 0.5,
+  "buffer_len": 16384,
+  "capture_interval_sec": 1.0,
+  "max_captures": 0
+}

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RSPdx Capture Status</title>
+    <style>
+      :root {
+        --bg: #0b1118;
+        --panel: #121b26;
+        --panel-2: #162231;
+        --border: #2a3a4e;
+        --text: #e6edf5;
+        --muted: #9bb0c9;
+        --accent: #2dd4bf;
+        --warn: #f59e0b;
+        --bad: #ef4444;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top, rgba(45, 212, 191, 0.12), transparent 55%), var(--bg);
+        color: var(--text);
+        font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+      }
+
+      .wrap {
+        width: min(1100px, 92vw);
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        font-size: 1rem;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        margin: 0;
+      }
+
+      .sub {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .card {
+        background: linear-gradient(180deg, rgba(18, 27, 38, 0.92), rgba(13, 19, 28, 0.96));
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 10px;
+      }
+
+      .metric {
+        background: var(--panel-2);
+        border-radius: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+      }
+
+      .metric .label {
+        color: var(--muted);
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .metric .value {
+        font-size: 0.95rem;
+        margin-top: 6px;
+      }
+
+      .ok {
+        color: var(--accent);
+      }
+
+      .warn {
+        color: var(--warn);
+      }
+
+      .bad {
+        color: var(--bad);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+
+      th,
+      td {
+        padding: 8px;
+        border-bottom: 1px solid rgba(42, 58, 78, 0.6);
+        text-align: left;
+      }
+
+      th {
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.72rem;
+      }
+
+      .empty {
+        color: var(--muted);
+        font-size: 0.85rem;
+      }
+
+      .controls {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        font: inherit;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+
+      button:hover {
+        border-color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <h1>RSPdx Capture Status</h1>
+          <div class="sub" id="subtitle">Waiting for status...</div>
+        </div>
+        <div class="controls">
+          <button id="refreshBtn">Refresh</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="grid" id="statusGrid"></div>
+      </section>
+
+      <section class="card">
+        <h2 class="sub">Recent Captures</h2>
+        <div id="capturesTable" class="empty">Loading captures...</div>
+      </section>
+    </div>
+
+    <script>
+      const statusGrid = document.getElementById("statusGrid");
+      const capturesTable = document.getElementById("capturesTable");
+      const subtitle = document.getElementById("subtitle");
+      const refreshBtn = document.getElementById("refreshBtn");
+
+      const statusPath = "/rf_captures/rspdx_pipeline/status.json";
+      const capturesPath = "/rf_captures/rspdx_pipeline/captures_recent.json";
+
+      function fmtDate(iso) {
+        if (!iso) return "-";
+        const dt = new Date(iso);
+        if (Number.isNaN(dt.getTime())) return "-";
+        return dt.toLocaleString();
+      }
+
+      function renderStatus(status) {
+        if (!status) {
+          statusGrid.innerHTML = '<div class="empty">No status available.</div>';
+          return;
+        }
+
+        const validation = status.validation;
+        const validationClass = validation?.passed ? "ok" : validation ? "bad" : "warn";
+        const validationLabel = validation?.passed ? "PASS" : validation ? "FAIL" : "n/a";
+
+        statusGrid.innerHTML = `
+          <div class="metric">
+            <div class="label">Started</div>
+            <div class="value">${fmtDate(status.started_at)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Last Update</div>
+            <div class="value">${fmtDate(status.updated_at)}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Frequency</div>
+            <div class="value">${(status.frequency_hz / 1e6).toFixed(3)} MHz</div>
+          </div>
+          <div class="metric">
+            <div class="label">Sample Rate</div>
+            <div class="value">${(status.sample_rate / 1e6).toFixed(2)} MSPS</div>
+          </div>
+          <div class="metric">
+            <div class="label">Gain</div>
+            <div class="value">${status.gain ?? "-"}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Captures</div>
+            <div class="value">${status.captures_count ?? 0}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Last Power</div>
+            <div class="value">${status.last_capture?.average_power_dbfs ?? "-"} dBFS</div>
+          </div>
+          <div class="metric">
+            <div class="label">Validation</div>
+            <div class="value ${validationClass}">${validationLabel}</div>
+          </div>
+        `;
+      }
+
+      function renderCaptures(captures) {
+        if (!Array.isArray(captures) || captures.length === 0) {
+          capturesTable.innerHTML = '<div class="empty">No captures yet.</div>';
+          return;
+        }
+
+        const rows = captures
+          .slice(-20)
+          .reverse()
+          .map(
+            (capture) => `
+            <tr>
+              <td>${fmtDate(capture.created_at)}</td>
+              <td>${Number(capture.frequency_mhz || 0).toFixed(3)}</td>
+              <td>${Number(capture.duration_sec || 0).toFixed(1)}s</td>
+              <td>${Number(capture.average_power_dbfs || 0).toFixed(2)}</td>
+              <td>${capture.file || "-"}</td>
+            </tr>
+          `
+          )
+          .join("");
+
+        capturesTable.innerHTML = `
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>MHz</th>
+                <th>Duration</th>
+                <th>Power dBFS</th>
+                <th>File</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        `;
+      }
+
+      async function fetchJson(path) {
+        const response = await fetch(path, { headers: { Accept: "application/json" } });
+        if (!response.ok) throw new Error(`${path} -> ${response.status}`);
+        return response.json();
+      }
+
+      async function refresh() {
+        try {
+          const [status, captures] = await Promise.all([
+            fetchJson(statusPath),
+            fetchJson(capturesPath),
+          ]);
+          renderStatus(status);
+          renderCaptures(captures);
+          subtitle.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        } catch (err) {
+          statusGrid.innerHTML = '<div class="empty">Status unavailable.</div>';
+          capturesTable.innerHTML = '<div class="empty">Capture log unavailable.</div>';
+          subtitle.textContent = `Error: ${err.message}`;
+        }
+      }
+
+      refreshBtn.addEventListener("click", refresh);
+      refresh();
+    </script>
+  </body>
+</html>
